@@ -32,6 +32,7 @@
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
+    @keyframes l1 {to{transform: rotate(.5turn)}}
     
     .loading {
       background-color: #4a9bd1 !important;
@@ -52,6 +53,41 @@
     .loading #propertyLoadingSpinner {
       display: inline !important;
     }
+    
+    #propertyLoadingSpinner {
+      font-size: 16px;
+      color: #007cba;
+      margin-right: 4px;
+    }
+    
+    /* #mapLoadingSpinner {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 24px;
+      color: #007cba;
+      z-index: 1000;
+    } */
+
+    #mapLoadingSpinner {
+        display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 50px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      border: 8px solid;
+      border-color: #000 #0000;
+      animation: l1 1s infinite;
+    }
+    
+    
+    #storymap {
+      position: relative;
+    }
   </style>
 </head>
 <body>
@@ -59,13 +95,13 @@
     <form id="filterForm" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
       <div style="display:flex;flex-direction:column;gap:6px;">
         <label for="itemId" style="font-size:14px;color:#333;">Item ID</label>
-        <input id="itemId" name="itemId" type="text" value="dissolution of the Soviet Union" placeholder="e.g. dissolution of the Soviet Union" 
+        <input id="itemId" name="itemId" type="text" value="" placeholder="e.g. dissolution of the Soviet Union" 
                style="padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:14px;width:140px;">
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         <label for="propertyId" style="font-size:14px;color:#333;">Property</label>
         <div style="display:flex;align-items:center;gap:8px;">
-          <span id="propertyLoadingSpinner" style="display:none;color:#007cba;font-size:16px;">⟳</span>
+          <span id="propertyLoadingSpinner" style="display:none;">⟳</span>
           <select id="propertyId" name="propertyId" 
                   style="padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:14px;width:140px;">
             <option value="">Select property...</option>
@@ -80,22 +116,46 @@
       </form>
   </div>
 
-  <div id="storymap"></div>
+  <div id="storymap">
+    <div id="mapLoadingSpinner"></div>
+  </div>
 
   <footer style="padding: 16px; text-align: center; background: #f8f9fa; border-top: 1px solid #e5e5e5; font-size: 12px; color: #666;">
     Made with ❤️ by <a href="https://meta.wikimedia.org/wiki/User:Khajitdadddy" target="_blank">Khajitdadddy</a>
   </footer>
 
   <script>
-    // API endpoint base for filtering
     const filterApiBase = 'https://wikidata-timetrail.vercel.app/collection/multiple-values';
-    // API endpoint base for resolving labels
     const nameApiBase = 'https://wikidata-timetrail.vercel.app/wikidata/itemName/';
-    // API endpoint base for fetching properties
     const propertiesApiBase = 'https://wikidata-timetrail.vercel.app/collection/multiple-props';
+
+    // URL query parameter utilities
+    function getQueryParams() {
+      const urlParams = new URLSearchParams(window.location.search);
+      return {
+        item: urlParams.get('item') || '',
+        property: urlParams.get('property') || ''
+      };
+    }
+
+    function updateURL(item, property) {
+      const url = new URL(window.location);
+      if (item) {
+        url.searchParams.set('item', item);
+      } else {
+        url.searchParams.delete('item');
+      }
+      if (property) {
+        url.searchParams.set('property', property);
+      } else {
+        url.searchParams.delete('property');
+      }
+      window.history.replaceState({}, '', url);
+    }
 
     function renderPlaceholder(message) {
       const container = document.getElementById('storymap');
+      setMapLoadingState(false); // Hide map loading spinner when showing placeholder
       container.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#555;font-family:system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;">
           <div style="text-align:center;max-width:680px;padding:24px;color:#444;">
@@ -118,11 +178,8 @@
           console.log('Response not ok:', res.status, res.statusText);
           return '';
         }
-        // Try to get text first, then parse as JSON if needed
         const text = await res.text();
         console.log('Response text:', text);
-        
-        // Try to parse as JSON first
         try {
           const data = JSON.parse(text);
           if (typeof data === 'string') return data;
@@ -142,18 +199,20 @@
     async function fetchPropertiesForItem(itemId) {
       const propertyLoadingSpinner = document.getElementById('propertyLoadingSpinner');
       const propertySelect = document.getElementById('propertyId');
+      const propertyLabel = document.querySelector('label[for="propertyId"]');
       
       if (!itemId) {
-        // Clear dropdown if no item ID
         propertySelect.innerHTML = '<option value="">Select property...</option>';
         propertyLoadingSpinner.style.display = 'none';
+        propertyLabel.textContent = 'Property';
         return;
       }
-
-      // Show loading spinner
+      
+      // Show loading state
       propertyLoadingSpinner.style.display = 'inline';
       propertyLoadingSpinner.classList.add('spinning');
       propertySelect.disabled = true;
+      propertyLabel.textContent = 'Fetching Properties....';
 
       console.log('Fetching properties for item:', itemId);
       try {
@@ -182,6 +241,12 @@
           });
         }
         
+        // Set pending property if it exists
+        if (window.pendingProperty) {
+          propertySelect.value = window.pendingProperty;
+          window.pendingProperty = null;
+        }
+        
       } catch (error) {
         console.log('Error fetching properties:', error);
       } finally {
@@ -189,13 +254,12 @@
         propertyLoadingSpinner.style.display = 'none';
         propertyLoadingSpinner.classList.remove('spinning');
         propertySelect.disabled = false;
+        propertyLabel.textContent = 'Property';
       }
     }
 
-    // Helper function to check if a URL can be embedded in iframe
     async function canEmbedUrl(url) {
       try {
-        // Create a test iframe to check if the URL can be embedded
         const testIframe = document.createElement('iframe');
         testIframe.style.display = 'none';
         testIframe.src = url;
@@ -227,7 +291,6 @@
     }
 
     async function createSlidesFromItems(items, selectedItemId, selectedPropertyId, selectedItemName, selectedPropertyName) {
-      // Transform the API data into StoryMapJS slides
       const slides = await Promise.all(
         items
         .filter(item => {
@@ -235,7 +298,7 @@
           const lat = parseFloat(item.location.latitude);
           const lon = parseFloat(item.location.longitude);
           return !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0;
-        }) // skip if location is null or has invalid coordinates
+        }) 
         .map(async (item) => {
           let media = null;
           
@@ -246,7 +309,6 @@
               credit: `Source: <a href="${item.image.commons_url}" target="_blank">Wikimedia Commons</a>`
             };
           } else if (item.identifier) {
-            // Check if the URL can be embedded before using it
             const canEmbed = await canEmbedUrl(item.identifier);
             if (canEmbed) {
               media = {
@@ -255,7 +317,6 @@
                 credit: `Source: <a href="${item.identifier}" target="_blank">View External Content</a>`
               };
             } else {
-              // Fallback: show a link instead of iframe
               console.warn(`Cannot embed ${item.identifier} - using fallback`);
               media = {
                 url: `data:text/html,<div style="padding:20px;text-align:center;"><h3>External Content</h3><p>This content cannot be embedded.</p><a href="${item.identifier}" target="_blank" style="background:#007cba;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">View External Content</a></div>`,
@@ -320,24 +381,43 @@
       }
     }
 
-    async function initStoryMap() {
+    function setMapLoadingState(loading) {
+      const mapLoadingSpinner = document.getElementById('mapLoadingSpinner');
+      if (!mapLoadingSpinner) return; // Exit if element doesn't exist
+      
+      if (loading) {
+        mapLoadingSpinner.style.display = 'block';
+      } else {
+        mapLoadingSpinner.style.display = 'none';
+      }
+    }
+
+    async function initStoryMap(useQueryParams = false) {
       // Validate inputs first; if missing, render helpful placeholder and bail
-      const itemId = (document.getElementById('itemId')).value || '';
-      const propertyId = (document.getElementById('propertyId')).value || '';
+      let itemId, propertyId;
+      
+      if (useQueryParams) {
+        const params = getQueryParams();
+        itemId = params.item || '';
+        propertyId = params.property || '';
+      } else {
+        itemId = (document.getElementById('itemId')).value || '';
+        propertyId = (document.getElementById('propertyId')).value || '';
+      }
+      
       if (!itemId || !propertyId) {
         renderPlaceholder('Enter an Item ID and select a Property to fetch a timetrail.');
         return;
       }
 
       setLoadingState(true);
+      setMapLoadingState(true);
       try {
         // Resolve friendly names in parallel
         const [itemName, propertyName] = await Promise.all([
           fetchNameForId(itemId),
           fetchNameForId(propertyId)
         ]);
-
-        // Fetch data
         const url = `${filterApiBase}?item=${encodeURIComponent(itemId)}&property=${encodeURIComponent(propertyId)}`;
         const response = await fetch(url);
         if (!response.ok) {
@@ -369,9 +449,8 @@
 
         };
 
-        // Initialize StoryMap (reset container to rebuild)
         const container = document.getElementById('storymap');
-        container.innerHTML = '';
+        container.innerHTML = '<div id="mapLoadingSpinner"></div>';
         const storymap = new KLStoryMap.StoryMap('storymap', storymapData, {});
         window.onresize = () => storymap.updateDisplay();
 
@@ -380,29 +459,60 @@
         renderPlaceholder('Could not load the map right now. Please try again.');
       } finally {
         setLoadingState(false);
+        setMapLoadingState(false);
       }
     }
     
 
-    // Wire up filter form and load defaults
+    // Initialize form with query parameters
+    async function initializeForm() {
+      const params = getQueryParams();
+      const itemInput = document.getElementById('itemId');
+      const propertySelect = document.getElementById('propertyId');
+      
+      if (params.item) {
+        itemInput.value = params.item;
+      }
+      
+      if (params.property) {
+        window.pendingProperty = params.property;
+      }
+        if (params.item && params.property) {
+          propertySelect.value = params.property;
+          await fetchPropertiesForItem(params.item);
+          await initStoryMap(true);   
+        } else if (params.item) {
+          await fetchPropertiesForItem(params.item);
+        }
+    }
+
+  
     document.getElementById('filterForm').addEventListener('submit', (e) => {
       e.preventDefault();
-      
-      initStoryMap();
+      initStoryMap(false);
     });
 
-    // Add event listener to item ID input to fetch properties
+    // Add event listener to item ID input to fetch properties and update URL
     document.getElementById('itemId').addEventListener('input', (e) => {
       const itemId = e.target.value.trim();
       fetchPropertiesForItem(itemId);
+      const propertySelect = document.getElementById('propertyId');
+      updateURL(itemId, propertySelect.value);
     });
 
-    // Initial load: fetch properties for default item (if any) and show placeholder (no API call yet)
-    const defaultItemId = document.getElementById('itemId').value;
-    if (defaultItemId) {
-      fetchPropertiesForItem(defaultItemId);
-    }
-    renderPlaceholder('Enter an Item ID and select a Property to fetch a timetrail.');
+    // Add event listener to property select to update URL
+    document.getElementById('propertyId').addEventListener('change', (e) => {
+      const itemInput = document.getElementById('itemId');
+      updateURL(itemInput.value, e.target.value);
+    });
+
+    // Initialize the form and show placeholder
+    initializeForm().then(() => {
+      const params = getQueryParams();
+      if (!params.item || !params.property) {
+        renderPlaceholder('Enter an Item ID and select a Property to fetch a timetrail.');
+      }
+    });
   </script>
 </body>
 </html>
