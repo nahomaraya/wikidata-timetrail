@@ -16,3 +16,4 @@ describe('WikidataController', () => {
     expect(controller).toBeDefined();
   });
 });
+ 

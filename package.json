@@ -26,6 +26,7 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.2.0",
+    "@nestjs/throttler": "^6.4.0",
     "@upstash/redis": "^1.35.4",
     "axios": "^1.12.2",
     "nanoid": "^5.1.6",

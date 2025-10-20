@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { SparqlService } from './sparql.service';
+import { WikidataAuthService } from './wikidata-auth.service';
 import pLimit from 'p-limit';
 
 interface LocationInfo {
@@ -14,73 +15,19 @@ interface LocationInfo {
 @Injectable()
 export class WikidataService {
   private readonly logger = new Logger(WikidataService.name);
-  private clientId: string;
-  private clientSecret: string;
-  private token: string | null = null;
-  private tokenExpiry: number | null = null;
   private wikidataUrl: string = 'https://www.wikidata.org/w/rest.php';
 
 
   constructor(
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
-    private readonly sparqlService: SparqlService
+    private readonly sparqlService: SparqlService,
+    private readonly authService: WikidataAuthService, 
   ) {
-    this.clientId = this.configService.get<string>('wikidata.clientId') ?? '';
-    this.clientSecret = this.configService.get<string>('wikidata.clientSecret') ?? '';
+    
   }
 
-  private async fetchAccessToken(): Promise<string> {
-    if (this.token && this.tokenExpiry && Date.now() < this.tokenExpiry) {
-      this.logger.debug('Using cached access token');
-      return this.token;
-    }
 
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.wikidataUrl}/oauth2/access_token`,
-          new URLSearchParams({
-            grant_type: 'client_credentials',
-            client_id: this.clientId,
-            client_secret: this.clientSecret,
-          }),
-          {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          },
-        ),
-      );
-
-      this.token = response.data.access_token;
-      this.tokenExpiry = Date.now() + response.data.expires_in * 1000;
-
-      // this.logger.log(`New access token fetched. Expires in ${response.data.expires_in}s`);
-
-      return this.token!;
-    } catch (error) {
-      this.logger.error(`Failed to fetch access token: ${error.message}`);
-      throw new HttpException('Failed to fetch access token', 500);
-    }
-  }
-
-  // private async getItemDescription(qid: string): Promise<string | null> {
-  //   try {
-  //     const itemData = await this.wikidataService.getItemStatements(qid);
-
-  //     // Fallback — some items may have descriptions from a different call
-  //     const fullItem = await this.wikidataService.getItemName(qid);
-
-  //     // Prefer the 'en' description if available
-  //     return (
-  //       itemData?.descriptions?.en?.value ??
-  //       fullItem?.descriptions?.en?.value ??
-  //       null
-  //     );
-  //   } catch (error) {
-  //     this.logger.warn(`Failed to fetch description for ${qid}: ${error.message}`);
-  //     return null;
-  //   }
-  // }
 
   async getItemDate(statements): Promise<string | null> {
     try {
@@ -203,19 +150,13 @@ export class WikidataService {
 
 
   async getItemName(itemId: string): Promise<string> {
-    const accessToken = await this.fetchAccessToken();
     const isProperty = itemId.startsWith('P');
     const url = isProperty
       ? `${this.wikidataUrl}/wikibase/v1/entities/properties/${itemId}`
       : `${this.wikidataUrl}/wikibase/v1/entities/items/${itemId}`;
     try {
       const response = await firstValueFrom(
-        this.httpService.get(url, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        }),
+        this.httpService.get(url),
       );
 
       const entity = response.data;
@@ -241,16 +182,10 @@ export class WikidataService {
   }
 
   async getItemStatements(itemId: string) {
-    const accessToken = await this.fetchAccessToken();
     const url = `${this.wikidataUrl}/wikibase/v1/entities/items/${itemId}/statements`;
     try {
       const response = await firstValueFrom(
-        this.httpService.get(url, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        }),
+        this.httpService.get(url),
       );
 
       return response.data;

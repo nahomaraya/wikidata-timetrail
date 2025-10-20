@@ -14,12 +14,21 @@ import wikidataConfig from './config/wikidata.config';
 import upstashConfig from './config/upstash.config';
 import { WikidataModule } from './wikidata/wikidata.module';
 import { StateModule } from './state/state.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       load: [authConfig, supabaseConfig, wikidataConfig, upstashConfig],
       isGlobal: true,
+    }),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          ttl: 60000,
+          limit: 10,
+        },
+      ],
     }),
     CollectionModule, CommonsModule, WikidataModule,  SupabaseModule, AuthModule, StateModule],
   controllers: [AppController],
