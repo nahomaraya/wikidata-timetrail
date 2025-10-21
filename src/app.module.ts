@@ -1,4 +1,7 @@
 import { Module, Logger } from '@nestjs/common';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CommonsService } from './commons/commons.service';
@@ -15,11 +18,17 @@ import upstashConfig from './config/upstash.config';
 import { WikidataModule } from './wikidata/wikidata.module';
 import { StateModule } from './state/state.module';
 
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       load: [authConfig, supabaseConfig, wikidataConfig, upstashConfig],
       isGlobal: true,
+    }),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..'), 
+      renderPath: '/',                 
+      serveRoot: '/',                  
     }),
     CollectionModule, CommonsModule, WikidataModule,  SupabaseModule, AuthModule, StateModule],
   controllers: [AppController],
