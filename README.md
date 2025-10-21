@@ -1,7 +1,5 @@
 # Wikidata TimeTrail
 
-Visualize the history of an item powered by Wikidata and StorymapJS
-
 ## Quick Start
 
 1. **Install dependencies:**
