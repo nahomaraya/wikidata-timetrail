@@ -28,7 +28,10 @@ import { StateModule } from './state/state.module';
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..'), 
       renderPath: '/',                 
-      serveRoot: '/',                  
+      serveRoot: '/', 
+      serveStaticOptions: {
+        index: 'index.html',
+      },                 
     }),
     CollectionModule, CommonsModule, WikidataModule,  SupabaseModule, AuthModule, StateModule],
   controllers: [AppController],
