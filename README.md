@@ -24,6 +24,11 @@ pnpm run build
 pnpm run start:prod
 ```
 
-4. **Swagger Url:**
+4. **To access:**
 ```bash
-curl http://localhost:3000/api
+#Web Page
+http://localhost:3000
+
+#Swagger Url
+http://localhost:3000/api
+```
