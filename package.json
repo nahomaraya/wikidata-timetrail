@@ -1,6 +1,7 @@
 {
   "name": "robyn-wikidata-ingester",
   "version": "0.0.1",
+  "packageManager": "pnpm@10.17.0",
   "description": "",
   "author": "",
   "private": true,
