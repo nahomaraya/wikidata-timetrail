@@ -350,8 +350,8 @@
       slides.unshift({
         type: "overview",
         text: {
-          headline: "Wikidata TimeTrail — Visualize the history of any Wikidata item with StoryMapJS!",
-          text: `Enter an Item ID and Property ID to trace your own timeline. Click the arrow and see where the data leads! Current selection shows:  ${(selectedItemId || selectedPropertyId) ? `<br><br><strong>Current selection:</strong> ${selectedItemId ? `Item <code>${selectedItemId}</code> with name ${selectedItemName ? ` (${selectedItemName})` : ''}` : ''}${(selectedItemId && selectedPropertyId) ? ' · ' : ''}${selectedPropertyId ? `Property <code>${selectedPropertyId}</code>${selectedPropertyName ? ` (${selectedPropertyName})` : ''}` : ''}` : ''}`
+          headline: `Current selection shows:  ${(selectedItemId || selectedPropertyId) ? `<br><br><strong>Current selection:</strong> ${selectedItemId ? `Item <code>${selectedItemId}</code> with name ${selectedItemName ? ` (${selectedItemName})` : ''}` : ''}${(selectedItemId && selectedPropertyId) ? ' · ' : ''}${selectedPropertyId ? `Property <code>${selectedPropertyId}</code>${selectedPropertyName ? ` (${selectedPropertyName})` : ''}` : ''}` : ''}`,
+          // text: `Enter an Item ID and Property ID to trace your own timeline. Click the arrow and see where the data leads!`
         },
         // location: {
         //   lat: 11,
