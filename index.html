@@ -202,7 +202,7 @@
       const propertyLabel = document.querySelector('label[for="propertyId"]');
       
       if (!itemId) {
-        propertySelect.innerHTML = '<option value="">Select property...</option>';
+        propertySelect.innerHTML = '<option value="">Click here to load properties</option>';
         propertyLoadingSpinner.style.display = 'none';
         propertyLabel.textContent = 'Property';
         return;
@@ -479,11 +479,10 @@
       }
         if (params.item && params.property) {
           propertySelect.value = params.property;
-          await fetchPropertiesForItem(params.item);
           await initStoryMap(true);   
-        } else if (params.item) {
-          await fetchPropertiesForItem(params.item);
         }
+        // Note: We no longer auto-fetch properties when only item is provided
+        // Properties will be fetched when user clicks the dropdown
     }
 
   
@@ -492,19 +491,33 @@
       initStoryMap(false);
     });
 
-    // Add event listener to item ID input to fetch properties and update URL
+    // Add event listener to item ID input to update URL only
     document.getElementById('itemId').addEventListener('input', (e) => {
       const itemId = e.target.value.trim();
-      fetchPropertiesForItem(itemId);
       const propertySelect = document.getElementById('propertyId');
       updateURL(itemId, propertySelect.value);
     });
 
-    // Add event listener to property select to update URL
+    // Add event listener to property select to fetch properties when clicked
+    document.getElementById('propertyId').addEventListener('click', (e) => {
+      const itemInput = document.getElementById('itemId');
+      const itemId = itemInput.value.trim();
+      if (itemId && e.target.options.length <= 1) {
+        fetchPropertiesForItem(itemId);
+      }
+    });
+
+    // Add event listener for when the placeholder option is selected
     document.getElementById('propertyId').addEventListener('change', (e) => {
       const itemInput = document.getElementById('itemId');
+      const itemId = itemInput.value.trim();
+      if (e.target.value === '' && itemId && e.target.options.length <= 1) {
+        fetchPropertiesForItem(itemId);
+        e.target.selectedIndex = 0;
+      }
       updateURL(itemInput.value, e.target.value);
     });
+
 
     // Initialize the form and show placeholder
     initializeForm().then(() => {
