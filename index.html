@@ -350,7 +350,7 @@
       slides.unshift({
         type: "overview",
         text: {
-          headline: `${(selectedItemId || selectedPropertyId) ? `${selectedItemId ? `Item <code>${selectedItemId}</code> with name ${selectedItemName ? ` (${selectedItemName})` : ''}` : ''}${(selectedItemId && selectedPropertyId) ? ' · ' : ''}${selectedPropertyId ? `Property <code>${selectedPropertyId}</code>${selectedPropertyName ? ` (${selectedPropertyName})` : ''}` : ''}` : ''}`,
+          headline: `${(selectedItemId || selectedPropertyId) ? `${selectedItemId ? `<code>${selectedItemId}</code> ${selectedItemName ? ` (${selectedItemName})` : ''}` : ''}${(selectedItemId && selectedPropertyId) ? ' · ' : ''}${selectedPropertyId ? `with property <code>${selectedPropertyId}</code>${selectedPropertyName ? ` (${selectedPropertyName})` : ''}` : ''}` : ''}`,
           // text: `Enter an Item ID and Property ID to trace your own timeline. Click the arrow and see where the data leads!`
         },
         // location: {
