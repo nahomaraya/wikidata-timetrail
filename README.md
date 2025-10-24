@@ -32,3 +32,8 @@ http://localhost:3000
 #Swagger Url
 http://localhost:3000/api
 ```
+
+## Feedback or Suggestions 
+
+Please use the etherpad below for any feedback or suggestions!
+https://etherpad.wikimedia.org/p/Wikidata_Timetrail_Feedback
