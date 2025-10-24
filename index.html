@@ -60,16 +60,6 @@
       margin-right: 4px;
     }
     
-    /* #mapLoadingSpinner {
-      display: none;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 24px;
-      color: #007cba;
-      z-index: 1000;
-    } */
 
     #mapLoadingSpinner {
         display: none;
@@ -328,12 +318,27 @@
 
           return {
             text: {
-              headline: item.name,
-              text: `
+              headline: `
+                <span style="display: inline-flex; align-items: center; gap: 6px;">
+                    ${item.name}
+                    ${
+                      item.id
+                      ? `<a href="https://www.wikidata.org/wiki/${item.id}" target="_blank" style="text-decoration:none;">
+                            <img 
+                              src="https://upload.wikimedia.org/wikipedia/commons/f/ff/Wikidata-logo.svg" 
+                              alt="Wikidata" 
+                              width="20" 
+                              height="20" 
+                              style="vertical-align:middle;"
+                          />
+                        </a>`
+                      : ''
+                  }
+                </span>
+              `,
+            text: `
                 ${item.desc || ''} 
-                <br><strong>Location:</strong> ${item.location.locationName || ''} 
-                ${item.id ? `<br><a href="https://www.wikidata.org/wiki/${item.id}" target="_blank">View on Wikidata</a>` : ''}
-              `
+                <br><strong>Location:</strong> ${item.location.locationName || ''}`
             },
             location: {
               name: item.location.locationName || '',
@@ -350,7 +355,14 @@
       slides.unshift({
         type: "overview",
         text: {
-          headline: `${(selectedItemId || selectedPropertyId) ? `${selectedItemId ? `<code>${selectedItemId}</code> ${selectedItemName ? ` (${selectedItemName})` : ''}` : ''}${(selectedItemId && selectedPropertyId) ? ' · ' : ''}${selectedPropertyId ? `with property <code>${selectedPropertyId}</code>${selectedPropertyName ? ` (${selectedPropertyName})` : ''}` : ''}` : ''}`,
+          headline: 'Wikidata Timetrail',
+          text: `${(selectedItemId || selectedPropertyId) ? 
+                    ` Events related to ${selectedItemId ? `<b>${selectedItemId}</b> ${selectedItemName ? ` (${selectedItemName})` : ''}`
+                : ''}
+
+                ${(selectedItemId && selectedPropertyId)?  '' :
+                ''}  ${selectedPropertyId ?
+                  `connected by <b>${selectedPropertyId}</b>${selectedPropertyName ? ` (${selectedPropertyName})` : ''}` : ''}` : ''}(s)`,
           // text: `Enter an Item ID and Property ID to trace your own timeline. Click the arrow and see where the data leads!`
         },
         // location: {

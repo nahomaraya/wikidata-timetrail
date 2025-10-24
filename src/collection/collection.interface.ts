@@ -61,4 +61,5 @@ export interface ValueDetailsResult {
   date: string | null;
   image: Image | { error: string } | null;
   identifier: string | null;
+  wikipediaLinks : any[];
 }

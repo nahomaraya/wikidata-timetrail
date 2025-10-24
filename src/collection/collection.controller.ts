@@ -21,7 +21,7 @@ export class CollectionController {
     }
 
     @Get('multiple-values')
-    async getMultipleValuesF(
+    async getMultipleValues(
       @Query('item') item?: string,
       @Query('property') property?: string, // handle single or multiple
     ) {

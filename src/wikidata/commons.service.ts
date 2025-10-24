@@ -63,12 +63,10 @@ export class CommonsService {
 
 
   async getImageByName(name: string): Promise<CommonsImageInfo | { error: string }> {
-    this.logger.log(`Resolving Commons image URL for: ${name}`);
-  
     const restApiUrl = `https://commons.wikimedia.org/w/rest.php/v1/file/${encodeURIComponent(
       name,
     )}`;
-  
+    this.logger.log("Fetching Commons Image");
     try {
       const response = await lastValueFrom(
         this.httpService.get(restApiUrl, { responseType: 'json' }),

@@ -34,7 +34,6 @@ export class CollectionService {
 
         // Get full statements from Wikidata for this item
         const statements = await this.wikidataService.getItemStatements(qid);
-        const multiValueProps = await this.wikidataService.getMultiValueProperties(statements);
         const identifier = await this.getFirstItemIdentifier(qid, statements);
         const locationId = statements[this.configService.get('wikidata.locationPropertyId')]?.[0]?.value?.content ?? null;
         let location: LocationInfo | null = null;
@@ -87,12 +86,14 @@ export class CollectionService {
         const desc = item.valueDescription?.value ?? '';
 
         // Get full statements from Wikidata for this item
-        const statements = await this.wikidataService.getItemStatements(qid);
-        const identifier = await this.getFirstItemIdentifier(qid, statements);
+        const { statements, wikipediaLinks, identifiers } = await this.wikidataService.getItemData(qid);
+        const identifier = await this.getFirstItemIdentifier(qid, { statements, wikipediaLinks, identifiers });
+
         const location: LocationInfo | null = await this.wikidataService.getItemLocation(statements);
         const date = await this.wikidataService.getItemDate(statements);
         // Extract P18 image name and resolve to Commons URLs
-        const imageName = statements[this.configService.get('wikidata.imagePropertyId')]?.[0]?.value?.content ?? null;
+        const imageName = statements.statements[this.configService.get('wikidata.imagePropertyId')]?.[0]?.value?.content ?? null;
+        this.logger.log(imageName);
         let imageInfo: CommonsImageInfo | { error: string } | null = null;
         if (imageName) {
           imageInfo = await this.commonsService.getImageByName(imageName);
@@ -106,6 +107,7 @@ export class CollectionService {
           date,
           image: imageInfo,
           identifier,
+          wikipediaLinks
         };
       } catch (err) {
         this.logger.error(`Error ingesting item ${item.valueQID?.value}: ${err.message}`);
@@ -127,27 +129,28 @@ export class CollectionService {
 
   return filtered;
 
-  }
+  }  
 
-  private async getFirstItemIdentifier(qid: string, statements: any): Promise<string | null> {
-    const identifiers = await this.wikidataService.extractIdentifiers(statements);
-
-    // 1. Check identifiers directly for URLs
+  private async getFirstItemIdentifier(
+    qid: string,
+    data: {
+      statements: any;
+      identifiers: { property: string; value: string; url?: string }[];
+      wikipediaLinks?: { language: string; title: string; url: string }[];
+    }
+  ): Promise<string | null> {
+    const { statements, identifiers, wikipediaLinks } = data;
+  
+    // 1️⃣ Prefer explicit identifiers that have URLs
     const firstIdentifierWithUrl = identifiers.find(id => !!id.url);
-    if (firstIdentifierWithUrl) {
-      return firstIdentifierWithUrl.url!;
+    if (firstIdentifierWithUrl) return firstIdentifierWithUrl.url!;
+  
+    // 2️⃣ Then fall back to Wikipedia links (if any)
+    if (wikipediaLinks && wikipediaLinks.length > 0) {
+      return wikipediaLinks[0].url;
     }
-
-    // 2. Look through sitelinks (if present)
-    if ((identifiers as any)?.sitelinks) {
-      const sitelinks = (identifiers as any).sitelinks;
-      const firstSitelink = Object.values(sitelinks)[0] as any;
-      if (firstSitelink?.url) {
-        return firstSitelink.url;
-      }
-    }
-
-    // 3. Scan statement values for plain string URLs
+  
+    // 3️⃣ Try to extract direct URLs from statements
     for (const values of Object.values(statements)) {
       for (const v of values as any[]) {
         const val = v?.mainsnak?.datavalue?.value ?? v?.value?.content;
@@ -156,8 +159,8 @@ export class CollectionService {
         }
       }
     }
-
-    // 4. Also check references attached to statements for URLs
+  
+    // 4️⃣ Check URLs in references
     for (const values of Object.values(statements)) {
       for (const v of values as any[]) {
         if (v?.references) {
@@ -174,9 +177,10 @@ export class CollectionService {
         }
       }
     }
-
-    return null; // nothing found
+  
+    return null;
   }
+  
 
   async queryItemsWithFilters(
     year?: number,
@@ -191,14 +195,14 @@ export class CollectionService {
     return this.getItemDetails(await items);
   }
 
-  async getMultipleValue(itemId?: string, propertyId?: string){
-    const items = await this.sparqlService.getValuesFromProperty(itemId??'', propertyId??'');
-    return this.getValueDetails(items);
-  }
-
   async getLootedItems(): Promise<Collection[]> {
     const items = await this.sparqlService.queryItems();
     return this.getItemDetails(items);
+  }
+
+  async getMultipleValue(itemId?: string, propertyId?: string){
+    const items = await this.sparqlService.getValuesFromProperty(itemId??'', propertyId??'');
+    return this.getValueDetails(items);
   }
 
   async getMultipeProps(itemId:string){

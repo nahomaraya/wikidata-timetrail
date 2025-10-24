@@ -63,56 +63,6 @@ export class WikidataService {
     }
   }
 
-  // private async getItemDescription(qid: string): Promise<string | null> {
-  //   try {
-  //     const itemData = await this.wikidataService.getItemStatements(qid);
-
-  //     // Fallback — some items may have descriptions from a different call
-  //     const fullItem = await this.wikidataService.getItemName(qid);
-
-  //     // Prefer the 'en' description if available
-  //     return (
-  //       itemData?.descriptions?.en?.value ??
-  //       fullItem?.descriptions?.en?.value ??
-  //       null
-  //     );
-  //   } catch (error) {
-  //     this.logger.warn(`Failed to fetch description for ${qid}: ${error.message}`);
-  //     return null;
-  //   }
-  // }
-
-  async getItemDate(statements): Promise<string | null> {
-    try {
-      const datePropertyCandidates = [
-        'P580', // start time
-        'P582', // end time
-        'P585', // point in time
-        'P571', // inception
-        'P569', // date of birth (for people)
-        'P570', // date of death
-        'P577'
-      ];
-
-      for (const propId of datePropertyCandidates) {
-        const dateStatement = statements[propId]?.[0];
-        const dateValue = dateStatement?.value?.content ?? null;
-        if (dateValue) {
-          const parsedDate = this.parseWikidataDate(dateValue);
-          if (parsedDate) {
-            return parsedDate.toISOString();
-          }
-        }
-      }
-
-      return null; // No date found
-    } catch (error) {
-      this.logger.warn(`Failed to fetch date for: ${error.message}`);
-      return null;
-    }
-  }
-
-
   private parseWikidataDate(dateValue: any): Date | null {
     try {
       let timeString: string;
@@ -145,6 +95,76 @@ export class WikidataService {
       return date;
     } catch (error) {
       this.logger.warn(`Failed to parse date: ${error.message}`);
+      return null;
+    }
+  }
+
+  private async getItemEntity(itemId: string) {
+    const accessToken = await this.fetchAccessToken();
+    const url = `${this.wikidataUrl}/wikibase/v1/entities/items/${itemId}`;
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+      );
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Failed to fetch Wikidata entity ${itemId}: ${error.message}`);
+      throw new HttpException('Failed to fetch Wikidata entity', 500);
+    }
+  }
+  
+  private extractWikipediaLinks(sitelinks: any, language?: string) {
+    this.logger.log("Getting wikipedia links");
+  
+    const links = Object.entries(sitelinks)
+      .filter(([key]) => key.endsWith('wiki'))
+      .map(([key, link]: [string, any]) => ({
+        language: key.replace('wiki', ''),
+        title: link.title,
+        url: link.url ?? `https://${key.replace('wiki', '.wikipedia.org/wiki/')}${encodeURIComponent(link.title)}`
+      }));
+  
+  
+      if (language) {
+      return links.filter(l => l.language === language);
+    }
+
+    return links;
+  }
+  
+  
+
+  async getItemDate(statements): Promise<string | null> {
+    try {
+      const datePropertyCandidates = [
+        'P580', // start time
+        'P582', // end time
+        'P585', // point in time
+        'P571', // inception
+        'P569', // date of birth (for people)
+        'P570', // date of death
+        'P577'
+      ];
+
+      for (const propId of datePropertyCandidates) {
+        const dateStatement = statements[propId]?.[0];
+        const dateValue = dateStatement?.value?.content ?? null;
+        if (dateValue) {
+          const parsedDate = this.parseWikidataDate(dateValue);
+          if (parsedDate) {
+            return parsedDate.toISOString();
+          }
+        }
+      }
+
+      return null; // No date found
+    } catch (error) {
+      this.logger.warn(`Failed to fetch date for: ${error.message}`);
       return null;
     }
   }
@@ -240,9 +260,22 @@ export class WikidataService {
     }
   }
 
+  async getItemData(itemId: string) {
+    const [statements, entity] = await Promise.all([
+      this.getItemStatements(itemId),
+      this.getItemEntity(itemId),
+    ]);
+  
+    this.logger.log("Getting items with statements and wikipedia links")
+    const identifiers = await this.extractIdentifiers(statements);
+    const wikipediaLinks = entity?.sitelinks ? this.extractWikipediaLinks(entity.sitelinks, 'en')[0]?.url : [];
+  
+    return { statements, identifiers, wikipediaLinks };
+  }
+  
   async getItemStatements(itemId: string) {
     const accessToken = await this.fetchAccessToken();
-    const url = `${this.wikidataUrl}/wikibase/v1/entities/items/${itemId}/statements`;
+    const url = `${this.wikidataUrl}/wikibase/v1/entities/items/${itemId}`;
     try {
       const response = await firstValueFrom(
         this.httpService.get(url, {
@@ -295,43 +328,77 @@ export class WikidataService {
     }
   }
 
-
-
   async extractIdentifiers(statements: any): Promise<{ property: string; value: string; url?: string }[]> {
+    this.logger.log('Extracting identifiers...');
     const identifiers: { property: string; value: string; url?: string }[] = [];
+  
     for (const [prop, values] of Object.entries(statements)) {
-      for (const v of values as any[]) {
-        // 1️⃣ Check if mainsnak itself is a URL
-        if (v.mainsnak?.datatype === 'url') {
-          const value = v.mainsnak?.datavalue?.value ?? '';
-          let url: string | undefined;
-          if (v.propertyInfo?.formatterUrl && value) {
-            url = v.propertyInfo.formatterUrl.replace('$1', encodeURIComponent(value));
-          }
-          identifiers.push({ property: prop, value, url });
-        }
-
-        // 2️⃣ Extract URLs from references
-        if (Array.isArray(v.references)) {
-          for (const ref of v.references) {
-            if (Array.isArray(ref.parts)) {
-              for (const part of ref.parts) {
-                if (part.property?.data_type === 'url') {
-                  const urlValue = part.value?.content ?? '';
-                  if (urlValue) {
-                    identifiers.push({ property: prop, value: urlValue, url: urlValue });
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      if (!Array.isArray(values)) continue;
+      identifiers.push(...this._processPropertyValues(prop, values));
     }
-
+  
     return identifiers;
   }
-
+  
+  /**
+   * Processes all values under a single property.
+   */
+  private _processPropertyValues(prop: string, values: any[]): { property: string; value: string; url?: string }[] {
+    const identifiers: { property: string; value: string; url?: string }[] = [];
+  
+    for (const v of values) {
+      // Extract URL from mainsnak
+      const mainUrl = this._extractUrlFromMainSnak(v, prop);
+      if (mainUrl) identifiers.push(mainUrl);
+  
+      // Extract URLs from references
+      const refUrls = this._extractUrlsFromReferences(v.references, prop);
+      identifiers.push(...refUrls);
+    }
+  
+    return identifiers;
+  }
+  
+  /**
+   * Extract a URL if mainsnak is a URL type.
+   */
+  private _extractUrlFromMainSnak(v: any, prop: string): { property: string; value: string; url?: string } | null {
+    if (v.mainsnak?.datatype !== 'url') return null;
+  
+    const value = v.mainsnak?.datavalue?.value ?? '';
+    if (!value) return null;
+  
+    let url: string | undefined;
+    if (v.propertyInfo?.formatterUrl) {
+      url = v.propertyInfo.formatterUrl.replace('$1', encodeURIComponent(value));
+    }
+  
+    return { property: prop, value, url };
+  }
+  
+  /**
+   * Extract URLs from nested reference parts.
+   */
+  private _extractUrlsFromReferences(refs: any[], prop: string): { property: string; value: string; url?: string }[] {
+    if (!Array.isArray(refs)) return [];
+  
+    const urls: { property: string; value: string; url?: string }[] = [];
+  
+    for (const ref of refs) {
+      if (!Array.isArray(ref.parts)) continue;
+  
+      for (const part of ref.parts) {
+        if (part.property?.data_type !== 'url') continue;
+  
+        const urlValue = part.value?.content ?? '';
+        if (urlValue) urls.push({ property: prop, value: urlValue, url: urlValue });
+      }
+    }
+  
+    return urls;
+  }
+  
+  
 
   async getEntityIdFromName(
     name: string,
