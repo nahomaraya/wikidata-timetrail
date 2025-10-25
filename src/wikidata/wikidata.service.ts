@@ -14,12 +14,14 @@ interface LocationInfo {
 @Injectable()
 export class WikidataService {
   private readonly logger = new Logger(WikidataService.name);
-  private clientId: string;
-  private clientSecret: string;
+  private readonly clientId: string;
+  private readonly clientSecret: string;
   private token: string | null = null;
   private tokenExpiry: number | null = null;
-  private wikidataUrl: string = 'https://www.wikidata.org/w/rest.php';
-
+  private readonly wikidataUrl: string = 'https://www.wikidata.org/w/rest.php';
+  private readonly targetIds : string[];
+  private readonly dateIds : string[];
+  private readonly locationIds : string[];
 
   constructor(
     private readonly configService: ConfigService,
@@ -28,6 +30,21 @@ export class WikidataService {
   ) {
     this.clientId = this.configService.get<string>('wikidata.clientId') ?? '';
     this.clientSecret = this.configService.get<string>('wikidata.clientSecret') ?? '';
+    this.targetIds = this.configService
+      .get<string>('RELATION_IDS', '')
+      .split(',')
+      .map(id => id.trim().replace(/\r?\n|\r/g, ''))
+      .filter(Boolean);
+    this.dateIds =this.configService
+    .get<string>('DATE_IDS', '')
+    .split(',')
+    .map(id => id.trim().replace(/\r?\n|\r/g, ''))
+    .filter(Boolean);
+    this.locationIds =this.configService
+    .get<string>('LOCATION_IDS', '')
+    .split(',')
+    .map(id => id.trim().replace(/\r?\n|\r/g, ''))
+    .filter(Boolean);
   }
 
   private async fetchAccessToken(): Promise<string> {
@@ -141,17 +158,7 @@ export class WikidataService {
 
   async getItemDate(statements): Promise<string | null> {
     try {
-      const datePropertyCandidates = [
-        'P580', // start time
-        'P582', // end time
-        'P585', // point in time
-        'P571', // inception
-        'P569', // date of birth (for people)
-        'P570', // date of death
-        'P577'
-      ];
-
-      for (const propId of datePropertyCandidates) {
+      for (const propId of this.dateIds) {
         const dateStatement = statements[propId]?.[0];
         const dateValue = dateStatement?.value?.content ?? null;
         if (dateValue) {
@@ -172,28 +179,22 @@ export class WikidataService {
 
   async getItemLocation(statements): Promise<LocationInfo | null> {
     try {
-
-
-      // Possible property IDs for location (expandable)
+      this.logger.log('Parsed LOCATION_IDS:', this.locationIds);
       const locationPropertyCandidates = [
-        this.configService.get('wikidata.locationPropertyId'),   // e.g. P276
-        'P17',  // country
-        'P131', // located in the administrative territorial entity
-        'P625', // coordinate location
-        'P159', // headquarters location
-        'P495', // country of origin
-        'P1071',
+        this.configService.get('wikidata.locationPropertyId'),
+        this.locationIds,
       ].filter(Boolean);
 
       for (const propId of locationPropertyCandidates) {
         const locationStatement = statements[propId]?.[0];
         if (!locationStatement) continue;
-
+        this.logger.log(propId);
         const locationId = locationStatement.value?.content ?? null;
         if (!locationId) continue;
 
         const locationName = await this.getItemName(locationId);
         const locationDetails = await this.getItemStatements(locationId);
+     
         const coordinates =
           locationDetails.statements[this.configService.get('wikidata.coordinatesPropertyId')]?.[0]
             ?.value?.content ?? null;
@@ -523,7 +524,6 @@ export class WikidataService {
         return [];
       }
 
-      const targetIds = ['Q18635217', 'Q18615777','Q22964785', 'Q51077473','P793', 'P1344','P155','P156','Q18647515']; // your list of target types
 
 
       const limit = pLimit(5); // 5 concurrent requests at a time
@@ -531,7 +531,7 @@ export class WikidataService {
       //use array of tasks instead of loops
       const tasks = Object.entries(statements.statements).map(([propId]) =>
         limit(async () => {
-      const isRelevant = await this.isSubclassOrInstanceOf(propId, targetIds);
+      const isRelevant = await this.isSubclassOrInstanceOf(propId, this.targetIds);
       if (!isRelevant) return null;
 
       const values = await this.sparqlService.getValuesFromProperty(itemId ?? '', propId);

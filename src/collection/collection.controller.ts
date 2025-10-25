@@ -7,18 +7,18 @@ export class CollectionController {
 
     constructor(private readonly collectionService: CollectionService, private readonly wikidataService: WikidataService){}
 
-    @Get('items')
-    async getLootedItems() {
-        return this.collectionService.getLootedItems();
-    }
+    // @Get('items')
+    // async getLootedItems() {
+    //     return this.collectionService.getLootedItems();
+    // }
 
-    @Get('filter')
-    async getItemsWithFilters(
-      @Query('year') year?: number,
-      @Query('timePeriod') timePeriod?: string, // handle single or multiple
-    ) {
-      return this.collectionService.queryItemsWithFilters(year, timePeriod);
-    }
+    // @Get('filter')
+    // async getItemsWithFilters(
+    //   @Query('year') year?: number,
+    //   @Query('timePeriod') timePeriod?: string, // handle single or multiple
+    // ) {
+    //   return this.collectionService.queryItemsWithFilters(year, timePeriod);
+    // }
 
     @Get('multiple-values')
     async getMultipleValues(

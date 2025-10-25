@@ -534,32 +534,60 @@
       initStoryMap(false);
     });
 
-    // Add event listener to item ID input to update URL only
-    document.getElementById('itemId').addEventListener('input', (e) => {
-      const itemId = e.target.value.trim();
+    document.addEventListener('DOMContentLoaded', () => {
+      const itemInput = document.getElementById('itemId');
       const propertySelect = document.getElementById('propertyId');
-      updateURL(itemId, propertySelect.value);
+
+      let lastFetchedItemId = ''; // Track last item ID fetched
+      let debounceTimer = null;
+
+      itemInput.addEventListener('input', (e) => {
+        const itemId = e.target.value.trim();
+
+        // Always update URL to reflect current input
+        updateURL(itemId, propertySelect.value);
+
+        // Debounce to avoid rapid calls while typing
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          // Only fetch if the ID actually changed
+          if (itemId !== lastFetchedItemId) {
+            lastFetchedItemId = itemId;
+
+            if (itemId.length > 0) {
+              // Clear previous dropdown options and show loading
+              propertySelect.innerHTML = '<option value="">Loading properties...</option>';
+              fetchPropertiesForItem(itemId);
+            } else {
+              // Input cleared → reset dropdown
+              propertySelect.innerHTML = '<option value="">Select property...</option>';
+            }
+          }
+        }, 500); // 500ms debounce delay
+      });
     });
 
-    // Add event listener to property select to fetch properties when clicked
-    document.getElementById('propertyId').addEventListener('click', (e) => {
-      const itemInput = document.getElementById('itemId');
-      const itemId = itemInput.value.trim();
-      if (itemId && e.target.options.length <= 1) {
-        fetchPropertiesForItem(itemId);
-      }
-    });
+ 
+
+    // // Add event listener to property select to fetch properties when clicked
+    // document.getElementById('propertyId').addEventListener('click', (e) => {
+    //   const itemInput = document.getElementById('itemId');
+    //   const itemId = itemInput.value.trim();
+    //   if (itemId && e.target.options.length <= 1) {
+    //     fetchPropertiesForItem(itemId);
+    //   }
+    // });
 
     // Add event listener for when the placeholder option is selected
-    document.getElementById('propertyId').addEventListener('change', (e) => {
-      const itemInput = document.getElementById('itemId');
-      const itemId = itemInput.value.trim();
-      if (e.target.value === '' && itemId && e.target.options.length <= 1) {
-        fetchPropertiesForItem(itemId);
-        e.target.selectedIndex = 0;
-      }
-      updateURL(itemInput.value, e.target.value);
-    });
+    // document.getElementById('propertyId').addEventListener('change', (e) => {
+    //   const itemInput = document.getElementById('itemId');
+    //   const itemId = itemInput.value.trim();
+    //   if (e.target.value === '' && itemId && e.target.options.length <= 1) {
+    //     fetchPropertiesForItem(itemId);
+    //     e.target.selectedIndex = 0;
+    //   }
+    //   updateURL(itemInput.value, e.target.value);
+    // });
 
 
     // Initialize the form and show placeholder
