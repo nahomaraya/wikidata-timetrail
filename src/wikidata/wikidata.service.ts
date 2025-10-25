@@ -195,7 +195,7 @@ export class WikidataService {
         const locationName = await this.getItemName(locationId);
         const locationDetails = await this.getItemStatements(locationId);
         const coordinates =
-          locationDetails[this.configService.get('wikidata.coordinatesPropertyId')]?.[0]
+          locationDetails.statements[this.configService.get('wikidata.coordinatesPropertyId')]?.[0]
             ?.value?.content ?? null;
 
         if (coordinates) {

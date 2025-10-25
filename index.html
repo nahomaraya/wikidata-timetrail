@@ -115,9 +115,9 @@
   </footer>
 
   <script>
-    const filterApiBase = 'http://localhost:8000/collection/multiple-values';
-    const nameApiBase = 'http://localhost:8000/wikidata/itemName/';
-    const propertiesApiBase = 'http://localhost:8000/collection/multiple-props';
+    const filterApiBase = 'https://wikidata-timetrail.toolforge.org/collection/multiple-values';
+    const nameApiBase = 'https://wikidata-timetrail.toolforge.org/wikidata/itemName/';
+    const propertiesApiBase = 'https://wikidata-timetrail.toolforge.org/collection/multiple-props';
 
     // URL query parameter utilities
     function getQueryParams() {
@@ -281,65 +281,76 @@
     }
 
     async function createSlidesFromItems(items, selectedItemName, selectedPropertyName) {
-      console.log(items);
       const slides = await Promise.all(
         items
-          .filter(item => {
-            if (!item.location) {
-              console.warn(`Skipping ${item.name} — no location`);
-              return false;
-            }
-            const { latitude, longitude } = item.location;
-            if (latitude == null || longitude == null) {
-              console.warn(`Skipping ${item.name} — missing lat/lon`);
-              return false;
-            }
-
-            const lat = Number(latitude);
-            const lon = Number(longitude);
-
-            const valid = !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0;
-            if (!valid) console.warn(`Skipping ${item.name} — invalid coords`, latitude, longitude);
-
-            return valid;
-          })
-          .map(async (item) => {
-            const media = await buildMedia(item);
-
-            return {
-              text: {
-                headline: `
-                  <span style="display: inline-flex; align-items: center; gap: 6px;">
-                    ${item.name}
-                    ${
-                      item.id
-                        ? `<a href="https://www.wikidata.org/wiki/${item.id}" target="_blank" style="text-decoration:none;">
-                            <img 
-                              src="https://upload.wikimedia.org/wikipedia/commons/f/ff/Wikidata-logo.svg" 
-                              alt="Wikidata" 
-                              width="20" 
-                              height="20" 
-                              style="vertical-align:middle;"
-                            />
-                            <span style="font-size: 0.5em; color: #666; text-decoration: underline;">(${item.id})</span>
-                          </a>`
-                        : ''
-                    }
-                  </span>`,
-                text: `
-                  ${item.desc || ''} 
-                  <br><strong>Location:</strong> ${item.location.locationName || ''}
-                  <br><a href="${item.wikipediaLinks}" target="_blank" style="text-decoration: underline;">Learn more...</a>`
-              },
-              location: {
-                name: item.location.locationName || '',
-                lat: Number(item.location.latitude),
-                lon: Number(item.location.longitude),
-                zoom: 6
-              },
-              media
+        .filter(item => {
+          if (!item.location) return false;
+          const lat = parseFloat(item.location.latitude);
+          const lon = parseFloat(item.location.longitude);
+          return !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0;
+        }) 
+        .map(async (item) => {
+          let media = null;
+          
+          if (item.image) {
+            media = {
+              url: item.image.original_url,
+              caption: item.image.filename,
+              credit: `Source: <a href="${item.image.commons_url}" target="_blank">Wikimedia Commons</a>`
             };
-          })
+          } else if (item.identifier) {
+            const canEmbed = await canEmbedUrl(item.identifier);
+            if (canEmbed) {
+              media = {
+                url: item.identifier,
+                caption: "External Content",
+                credit: `Source: <a href="${item.identifier}" target="_blank">View External Content</a>`
+              };
+            } else {
+              console.warn(`Cannot embed ${item.identifier} - using fallback`);
+              media = {
+                url: `data:text/html,<div style="padding:20px;text-align:center;"><h3>External Content</h3><p>This content cannot be embedded.</p><a href="${item.identifier}" target="_blank" style="background:#007cba;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">View External Content</a></div>`,
+                caption: "External Content (Click to view)",
+                credit: `Source: <a href="${item.identifier}" target="_blank">View External Content</a>`
+              };
+            }
+          }
+
+          return {
+            text: {
+              headline: `
+                <span style="display: inline-flex; align-items: center; gap: 6px;">
+                    ${item.name}   
+                </span>
+              `,
+            text: `
+                 ${
+                      item.id
+                      ? `<a href="https://www.wikidata.org/wiki/${item.id}" target="_blank" style="text-decoration:none;">
+                          <img 
+                            src="https://upload.wikimedia.org/wikipedia/commons/f/ff/Wikidata-logo.svg" 
+                            alt="Wikidata" 
+                            width="20" 
+                            height="20" 
+                            style="vertical-align:middle;"
+                          />
+                          <span style="font-size: 0.8em; color: #666; text-decoration: underline;">(${item.id})</span>
+                        </a>`
+                      : ''
+                    }
+                <br>${item.desc || ''} <span>(<a href="${item.wikipediaLinks}" target="_blank" style="text-decoration: underline;">Learn more...</a>)</span>
+                <br><strong>Location:</strong> ${item.location.locationName || ''}
+               `
+            },
+            location: {
+              name: item.location.locationName || '',
+              lat: parseFloat(item.location.latitude) || 0,
+              lon: parseFloat(item.location.longitude) || 0,
+              zoom: 6
+            },
+            media: media
+          };
+        })
       );
 
       var overviewText = '';
@@ -363,7 +374,7 @@
 
           overviewText = parts.join(' ') + '(s)';
       } else {
-          overviewText = 'Enter an Item ID and Property ID to trace your own timeline. Click the arrow and see where the data leads!';
+          overviewText = 'Enter an item name and select a property to trace your own timeline. Click the arrow and see where the data leads!';
       }
 
       slides.unshift({
@@ -419,7 +430,7 @@
       }
       
       if (!itemId || !propertyId) {
-        renderPlaceholder('Enter an Item ID and select a Property to fetch a timetrail.');
+        renderPlaceholder('Enter an item name and select a property to fetch a timetrail.');
         return;
       }
 
@@ -536,7 +547,7 @@
     initializeForm().then(() => {
       const params = getQueryParams();
       if (!params.item || !params.property) {
-        renderPlaceholder('Enter an Item ID and select a Property to fetch a timetrail.');
+        renderPlaceholder('Enter an item name and select a property to fetch a timetrail.');
       }
     });
   </script>
