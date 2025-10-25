@@ -374,7 +374,7 @@
 
           overviewText = parts.join(' ') + '(s)';
       } else {
-          overviewText = 'Enter an item name and select a property to trace your own timeline. Click the arrow and see where the data leads!';
+          overviewText = 'Enter a topic name and select a property/event to trace your own timeline. Click the arrow and see where the data leads!';
       }
 
       slides.unshift({
@@ -430,7 +430,7 @@
       }
       
       if (!itemId || !propertyId) {
-        renderPlaceholder('Enter an item name and select a property to fetch a timetrail.');
+        renderPlaceholder('Enter a topic name and select a property/event to fetch a timetrail.');
         return;
       }
 
@@ -547,7 +547,7 @@
     initializeForm().then(() => {
       const params = getQueryParams();
       if (!params.item || !params.property) {
-        renderPlaceholder('Enter an item name and select a property to fetch a timetrail.');
+        renderPlaceholder('Enter a topic name and select a property/event  to fetch a timetrail.');
       }
     });
   </script>
