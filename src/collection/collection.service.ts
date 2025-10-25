@@ -87,10 +87,9 @@ export class CollectionService {
 
         // Get full statements from Wikidata for this item
         const { statements, wikipediaLinks, identifiers } = await this.wikidataService.getItemData(qid);
-        const identifier = await this.getFirstItemIdentifier(qid, { statements, wikipediaLinks, identifiers });
 
-        const location: LocationInfo | null = await this.wikidataService.getItemLocation(statements);
-        const date = await this.wikidataService.getItemDate(statements);
+        const location: LocationInfo | null = await this.wikidataService.getItemLocation(statements.statements);
+        const date = await this.wikidataService.getItemDate(statements.statements);
         // Extract P18 image name and resolve to Commons URLs
         const imageName = statements.statements[this.configService.get('wikidata.imagePropertyId')]?.[0]?.value?.content ?? null;
         this.logger.log(imageName);
@@ -106,7 +105,6 @@ export class CollectionService {
           location,
           date,
           image: imageInfo,
-          identifier,
           wikipediaLinks
         };
       } catch (err) {

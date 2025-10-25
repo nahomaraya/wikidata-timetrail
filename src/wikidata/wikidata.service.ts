@@ -529,7 +529,7 @@ export class WikidataService {
       const limit = pLimit(5); // 5 concurrent requests at a time
 
       //use array of tasks instead of loops
-      const tasks = Object.entries(statements).map(([propId]) =>
+      const tasks = Object.entries(statements.statements).map(([propId]) =>
         limit(async () => {
       const isRelevant = await this.isSubclassOrInstanceOf(propId, targetIds);
       if (!isRelevant) return null;
