@@ -84,7 +84,7 @@
   <div style="padding:12px 16px;border-bottom:1px solid #e5e5e5;background:#fafafa;font-family:system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;">
     <form id="filterForm" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
       <div style="display:flex;flex-direction:column;gap:6px;">
-        <label for="itemId" style="font-size:14px;color:#333;">Item ID</label>
+        <label for="itemId" style="font-size:14px;color:#333;">Topic</label>
         <input id="itemId" name="itemId" type="text" value="" placeholder="e.g. French Revolution" 
                style="padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:14px;width:140px;">
       </div>
@@ -338,8 +338,9 @@
                         </a>`
                       : ''
                     }
-                <br>${item.desc || ''} <span>(<a href="${item.wikipediaLinks}" target="_blank" style="text-decoration: underline;">Learn more...</a>)</span>
                 <br><strong>Location:</strong> ${item.location.locationName || ''}
+                <br>${item.desc || ''} <span>(<a href="${item.wikipediaLinks}" target="_blank" style="text-decoration: underline;">Learn more...</a>)</span>
+               
                `
             },
             location: {
@@ -360,14 +361,14 @@
 
           if (selectedItemName) {
               var itemText = '<b>' + selectedItemName + '</b>';
-              itemText += ' (' + selectedItemName + ')';
+              
               
               parts.push('Events related to ' + itemText);
           }
 
           if (selectedPropertyName) {
               var propertyText = '<b>' + selectedPropertyName + '</b>';
-              propertyText += ' (' + selectedPropertyName + ')';
+            
               
               parts.push('connected by ' + propertyText);
           }
