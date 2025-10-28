@@ -565,18 +565,15 @@
           }
         }, 500); // 500ms debounce delay
       });
+      propertySelect.addEventListener('click', (e) => {
+          const itemId = itemInput.value.trim();
+          if (itemId && e.target.options.length <= 1) {
+            fetchPropertiesForItem(itemId);
+          }
+        });
     });
 
- 
 
-    // // Add event listener to property select to fetch properties when clicked
-    // document.getElementById('propertyId').addEventListener('click', (e) => {
-    //   const itemInput = document.getElementById('itemId');
-    //   const itemId = itemInput.value.trim();
-    //   if (itemId && e.target.options.length <= 1) {
-    //     fetchPropertiesForItem(itemId);
-    //   }
-    // });
 
     // Add event listener for when the placeholder option is selected
     // document.getElementById('propertyId').addEventListener('change', (e) => {
