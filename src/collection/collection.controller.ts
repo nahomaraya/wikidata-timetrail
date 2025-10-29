@@ -25,8 +25,8 @@ export class CollectionController {
       @Query('item') item?: string,
       @Query('property') property?: string, // handle single or multiple
     ) {
-      const itemId = await this.wikidataService.getEntityIdFromName(item?item:'');
-      const propertyId = await this.wikidataService.getEntityIdFromName(property?property:'', 'en', 'property');
+      const itemId = await this.wikidataService.getEntityIdFromName(item || '');
+      const propertyId = await this.wikidataService.getEntityIdFromName(property || '', 'en', 'property');
       return this.collectionService.getMultipleValue(itemId ?? undefined, propertyId ?? undefined);
     }
 
@@ -35,7 +35,7 @@ export class CollectionController {
       @Query('item') item?: string,
    
     ) {
-      const itemId = await this.wikidataService.getItemIdFromName(item?item:'');
-      return this.collectionService.getMultipeProps(itemId? itemId:'');
+      const itemId = await this.wikidataService.getItemIdFromName(item || '');
+      return this.collectionService.getMultipeProps(itemId || '');
     }
 }

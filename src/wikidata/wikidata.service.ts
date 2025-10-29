@@ -179,26 +179,28 @@ export class WikidataService {
 
   async getItemLocation(statements): Promise<LocationInfo | null> {
     try {
-      this.logger.log('Parsed LOCATION_IDS:', this.locationIds);
       const locationPropertyCandidates = [
-        this.configService.get('wikidata.locationPropertyId'),
-        this.locationIds,
+        this.configService.get('wikidata.locationPropertyId'), 
+        ...(this.locationIds ?? []), 
       ].filter(Boolean);
-
+  
       for (const propId of locationPropertyCandidates) {
         const locationStatement = statements[propId]?.[0];
-        if (!locationStatement) continue;
-        this.logger.log(propId);
+  
+        if (!locationStatement) {
+          continue;
+        }
+  
         const locationId = locationStatement.value?.content ?? null;
-        if (!locationId) continue;
+        if (!locationId) {
+          continue;
+        }
 
         const locationName = await this.getItemName(locationId);
         const locationDetails = await this.getItemStatements(locationId);
-     
         const coordinates =
           locationDetails.statements[this.configService.get('wikidata.coordinatesPropertyId')]?.[0]
-            ?.value?.content ?? null;
-
+            ?.value?.content ?? null;  
         if (coordinates) {
           return {
             locationName,
@@ -206,7 +208,6 @@ export class WikidataService {
             longitude: coordinates.longitude?.toString() ?? '',
           };
         } else {
-          // If coordinates not available, still return the name
           return {
             locationName,
             latitude: '',
@@ -214,13 +215,16 @@ export class WikidataService {
           };
         }
       }
-
-      return null; // No location found
+  
+      this.logger.log('No location found for any property ID:', locationPropertyCandidates);
+      return null; 
     } catch (error) {
       this.logger.warn(`Failed to fetch location: ${error.message}`);
       return null;
     }
   }
+  
+  
 
 
   async getItemName(itemId: string): Promise<string> {
