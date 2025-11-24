@@ -44,19 +44,20 @@ http://localhost:3000/api
 1. **Ingest Wikidata Statements**  
    The tool fetches statements about a given Wikidata item via the Wikidata API or dumps (via Toolforge).  
    It looks at date-related properties (e.g., `P580`, `P571`, `P582`) to extract times that matter (birth, creation, dissolution, major events).
+   Fetches images from the wikidata statements and performs auto-resolution
 
-2. **Normalize Dates**  
+3. **Normalize Dates**  
    - Parses different date formats (point-in-time, time spans, qualifiers).  
    - Converts them into a consistent internal representation (e.g., ISO 8601) for timeline visualization.
 
-3. **Event Aggregation & Ordering**  
+4. **Event Aggregation & Ordering**  
    - Orders extracted statements chronologically.  
    - Merges overlapping or nested events.  
    - Optionally filters and deduplicates based on configuration (e.g., only “significant” dates, or lowest-level qualifiers).
    - SPARQL query for time-series properties
    - Wikidata REST API query for labels, images, and fallbacks
 
-4. **Geospatial Enrichment**  
+5. **Geospatial Enrichment**  
    - Uses location-related properties (configured via `LOCATION_IDS` such as `P17`, `P131`, `P625`, etc.).
    - These can also be configured via environment variable
      ```bash
@@ -65,7 +66,7 @@ http://localhost:3000/api
    - Resolves location Q-IDs to coordinates (if available) or hierarchical parent locations.  
    - Provides geospatial data for mapping on a timeline map view.
 
-5. **Output**
+6. **Output**
     The API returns JSON such as:
   ```bash
   [{
