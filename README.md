@@ -67,7 +67,7 @@ http://localhost:3000/api
 
 5. **Output**
     The API returns JSON such as:
-   ```bash
+  ```bash
   [{
   "id": "Q1710656",
   "name": "Washington Territory",
@@ -77,7 +77,7 @@ http://localhost:3000/api
   "image": null,
   "wikipediaLinks": "https://en.wikipedia.org/wiki/Washington_Territory"
 }]
-   ```
+```
 
 
 ## Feedback or Suggestions 
