@@ -78,6 +78,7 @@ http://localhost:3000/api
   "wikipediaLinks": "https://en.wikipedia.org/wiki/Washington_Territory"
 }]
 ```
+These can be visualized as snapshots on maps, timelines, or interactive historical explorers.
 
 
 ## Feedback or Suggestions 
