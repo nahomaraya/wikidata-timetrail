@@ -53,11 +53,31 @@ http://localhost:3000/api
    - Orders extracted statements chronologically.  
    - Merges overlapping or nested events.  
    - Optionally filters and deduplicates based on configuration (e.g., only “significant” dates, or lowest-level qualifiers).
+   - SPARQL query for time-series properties
+   - Wikidata REST API query for labels, images, and fallbacks
 
 4. **Geospatial Enrichment**  
-   - Uses location-related properties (configured via `LOCATION_IDS` such as `P17`, `P131`, `P625`, etc.).  
+   - Uses location-related properties (configured via `LOCATION_IDS` such as `P17`, `P131`, `P625`, etc.).
+   - These can also be configured via environment variable
+     ```bash
+     LOCATION_IDS=P17,P131,P625,P159,P495,P1071,P36
+     ```
    - Resolves location Q-IDs to coordinates (if available) or hierarchical parent locations.  
    - Provides geospatial data for mapping on a timeline map view.
+
+5. **Output**
+    The API returns JSON such as:
+   ```bash
+  [{
+  "id": "Q1710656",
+  "name": "Washington Territory",
+  "desc": "Territory of the USA between 1853–1889",
+  "location": "Q30",
+  "date": "1853-01-01T00:00:00.000Z",
+  "image": null,
+  "wikipediaLinks": "https://en.wikipedia.org/wiki/Washington_Territory"
+}]
+   ```
 
 
 ## Feedback or Suggestions 
