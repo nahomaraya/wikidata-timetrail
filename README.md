@@ -1,4 +1,6 @@
 # Wikidata TimeTrail
+**Wikidata TimeTrail** is a tool to build and visualize *timelines* from Wikidata items based on their historical statements.  
+It provides both a web service and a mapping tool that lets you explore the life, events, and changes associated with a Wikidata entity (Q-ID).
 
 ## Quick Start
 
@@ -32,6 +34,31 @@ http://localhost:3000
 #Swagger Url
 http://localhost:3000/api
 ```
+
+
+
+---
+
+## How It Works
+
+1. **Ingest Wikidata Statements**  
+   The tool fetches statements about a given Wikidata item via the Wikidata API or dumps (via Toolforge).  
+   It looks at date-related properties (e.g., `P580`, `P571`, `P582`) to extract times that matter (birth, creation, dissolution, major events).
+
+2. **Normalize Dates**  
+   - Parses different date formats (point-in-time, time spans, qualifiers).  
+   - Converts them into a consistent internal representation (e.g., ISO 8601) for timeline visualization.
+
+3. **Event Aggregation & Ordering**  
+   - Orders extracted statements chronologically.  
+   - Merges overlapping or nested events.  
+   - Optionally filters and deduplicates based on configuration (e.g., only “significant” dates, or lowest-level qualifiers).
+
+4. **Geospatial Enrichment**  
+   - Uses location-related properties (configured via `LOCATION_IDS` such as `P17`, `P131`, `P625`, etc.).  
+   - Resolves location Q-IDs to coordinates (if available) or hierarchical parent locations.  
+   - Provides geospatial data for mapping on a timeline map view.
+
 
 ## Feedback or Suggestions 
 
