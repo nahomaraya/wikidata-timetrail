@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { Redis } from '@upstash/redis';
 
 @Injectable()
@@ -7,12 +7,21 @@ export class StateService {
 
   constructor(private readonly redis: Redis) {}
 
-
   async cacheSet<T>(key: string, value: T, ttlSeconds?: number) {
     try {
-      await this.redis.set(key, value, ttlSeconds ? { ex: ttlSeconds } : undefined);
+      await this.redis.set(
+        key,
+        value,
+        ttlSeconds ? { ex: ttlSeconds } : undefined,
+      );
     } catch (error) {
-      this.logger.warn(`Failed to cache data for key ${key}: ${error.message}`);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to cache data for key ${key}: ${errorMessage}`);
+      throw new HttpException(
+        'Failed to fetch access token',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -20,8 +29,13 @@ export class StateService {
     try {
       return await this.redis.get<T>(key);
     } catch (error) {
-      this.logger.warn(`Failed to get cached data for key ${key}: ${error.message}`);
-      return null;
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to cache data for key ${key}: ${errorMessage}`);
+      throw new HttpException(
+        'Failed to fetch access token',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -40,15 +54,13 @@ export class StateService {
     return count > maxRequests;
   }
 
+  //   async publishNotice(channel: string, message: any) {
+  //     await this.redis.publish(channel, JSON.stringify(message));
+  //   }
 
-//   async publishNotice(channel: string, message: any) {
-//     await this.redis.publish(channel, JSON.stringify(message));
-//   }
-
- 
-//   onNotice(channel: string, callback: (msg: any) => void) {
-//     // Upstash Redis supports Pub/Sub via WebSocket
-//     this.logger.log(`Subscribed to ${channel}`);
-//     // you'd hook this with @upstash/redis pub/sub client
-//   }
+  //   onNotice(channel: string, callback: (msg: any) => void) {
+  //     // Upstash Redis supports Pub/Sub via WebSocket
+  //     this.logger.log(`Subscribed to ${channel}`);
+  //     // you'd hook this with @upstash/redis pub/sub client
+  //   }
 }

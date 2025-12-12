@@ -1,15 +1,11 @@
-import { Injectable, HttpException, Logger } from '@nestjs/common';
+import { Injectable, HttpException, Logger, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { SparqlService } from './sparql.service';
+import { SparqlService, SparqlValueResult } from './sparql.service';
 import pLimit from 'p-limit';
-
-interface LocationInfo {
-  locationName: string;
-  latitude: string,
-  longitude: string,
-}
+import { AxiosResponse } from 'axios';
+import * as T from '../interfaces/wikidata.interface';
 
 @Injectable()
 export class WikidataService {
@@ -19,32 +15,33 @@ export class WikidataService {
   private token: string | null = null;
   private tokenExpiry: number | null = null;
   private readonly wikidataUrl: string = 'https://www.wikidata.org/w/rest.php';
-  private readonly targetIds : string[];
-  private readonly dateIds : string[];
-  private readonly locationIds : string[];
+  private readonly targetIds: string[];
+  private readonly dateIds: string[];
+  private readonly locationIds: string[];
 
   constructor(
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
-    private readonly sparqlService: SparqlService
+    private readonly sparqlService: SparqlService,
   ) {
     this.clientId = this.configService.get<string>('wikidata.clientId') ?? '';
-    this.clientSecret = this.configService.get<string>('wikidata.clientSecret') ?? '';
+    this.clientSecret =
+      this.configService.get<string>('wikidata.clientSecret') ?? '';
     this.targetIds = this.configService
       .get<string>('RELATION_IDS', '')
       .split(',')
-      .map(id => id.trim().replace(/\r?\n|\r/g, ''))
+      .map((id) => id.trim().replace(/\r?\n|\r/g, ''))
       .filter(Boolean);
-    this.dateIds =this.configService
-    .get<string>('DATE_IDS', '')
-    .split(',')
-    .map(id => id.trim().replace(/\r?\n|\r/g, ''))
-    .filter(Boolean);
-    this.locationIds =this.configService
-    .get<string>('LOCATION_IDS', '')
-    .split(',')
-    .map(id => id.trim().replace(/\r?\n|\r/g, ''))
-    .filter(Boolean);
+    this.dateIds = this.configService
+      .get<string>('DATE_IDS', '')
+      .split(',')
+      .map((id) => id.trim().replace(/\r?\n|\r/g, ''))
+      .filter(Boolean);
+    this.locationIds = this.configService
+      .get<string>('LOCATION_IDS', '')
+      .split(',')
+      .map((id) => id.trim().replace(/\r?\n|\r/g, ''))
+      .filter(Boolean);
   }
 
   private async fetchAccessToken(): Promise<string> {
@@ -54,53 +51,58 @@ export class WikidataService {
     }
 
     try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.wikidataUrl}/oauth2/access_token`,
-          new URLSearchParams({
-            grant_type: 'client_credentials',
-            client_id: this.clientId,
-            client_secret: this.clientSecret,
-          }),
-          {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          },
-        ),
-      );
+      const response: AxiosResponse<T.WikidataTokenResponse> =
+        await firstValueFrom(
+          this.httpService.post(
+            `${this.wikidataUrl}/oauth2/access_token`,
+            new URLSearchParams({
+              grant_type: 'client_credentials',
+              client_id: this.clientId,
+              client_secret: this.clientSecret,
+            }),
+            {
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'Wikidata timetrail/1.0 (nahomaraya8@gmail.com)',
+              },
+            },
+          ),
+        );
 
       this.token = response.data.access_token;
       this.tokenExpiry = Date.now() + response.data.expires_in * 1000;
 
-      // this.logger.log(`New access token fetched. Expires in ${response.data.expires_in}s`);
-
-      return this.token!;
-    } catch (error) {
-      this.logger.error(`Failed to fetch access token: ${error.message}`);
-      throw new HttpException('Failed to fetch access token', 500);
+      return this.token;
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to fetch access token: ${errorMessage}`);
+      throw new HttpException(
+        'Failed to fetch access token',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
-  private parseWikidataDate(dateValue: any): Date | null {
+  private parseWikidataDate(dateValue: T.WikidataTimeObject): Date | null {
     try {
       let timeString: string;
 
-      // Wikidata encodes time as an object with a `time` field (e.g., { time: '+1917-01-01T00:00:00Z', precision: 9 })
       if (typeof dateValue === 'object' && dateValue.time) {
         timeString = dateValue.time;
-      }
-      // In some rare cases, it's just a plain string
-      else if (typeof dateValue === 'string') {
+      } else if (typeof dateValue === 'string') {
         timeString = dateValue;
-      }
-      else {
-        this.logger.warn(`Unexpected date value format: ${JSON.stringify(dateValue)}`);
+      } else {
+        this.logger.warn(
+          `Unexpected date value format: ${JSON.stringify(dateValue)}`,
+        );
         return null;
       }
 
-      // Remove leading "+" if present
-      let cleanDate = timeString.startsWith('+') ? timeString.substring(1) : timeString;
+      let cleanDate = timeString.startsWith('+')
+        ? timeString.substring(1)
+        : timeString;
 
-      // Replace invalid month/day zeros with defaults
       cleanDate = cleanDate.replace(/-00-/g, '-01-').replace(/-00T/g, '-01T');
 
       const date = new Date(cleanDate);
@@ -110,17 +112,19 @@ export class WikidataService {
       }
 
       return date;
-    } catch (error) {
-      this.logger.warn(`Failed to parse date: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to parse date: ${errorMessage}`);
       return null;
     }
   }
 
-  private async getItemEntity(itemId: string) {
+  private async getItemEntity(itemId: string): Promise<T.WikidataEntity> {
     const accessToken = await this.fetchAccessToken();
     const url = `${this.wikidataUrl}/wikibase/v1/entities/items/${itemId}`;
     try {
-      const response = await firstValueFrom(
+      const response: AxiosResponse<T.WikidataEntity> = await firstValueFrom(
         this.httpService.get(url, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -129,39 +133,52 @@ export class WikidataService {
         }),
       );
       return response.data;
-    } catch (error) {
-      this.logger.error(`Failed to fetch Wikidata entity ${itemId}: ${error.message}`);
-      throw new HttpException('Failed to fetch Wikidata entity', 500);
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `Failed to fetch Wikidata entity ${itemId}: ${errorMessage}`,
+      );
+      throw new HttpException(
+        'Failed to fetch Wikidata entity',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
-  
-  private extractWikipediaLinks(sitelinks: any, language?: string) {
-    this.logger.log("Getting wikipedia links");
-  
+
+  private extractWikipediaLinks(
+    sitelinks: T.WikidataEntity['sitelinks'],
+    language?: string,
+  ): Array<{ language: string; title: string; url: string }> {
+    this.logger.log('Getting wikipedia links');
+
+    if (!sitelinks) return [];
+
     const links = Object.entries(sitelinks)
       .filter(([key]) => key.endsWith('wiki'))
-      .map(([key, link]: [string, any]) => ({
+      .map(([key, link]) => ({
         language: key.replace('wiki', ''),
         title: link.title,
-        url: link.url ?? `https://${key.replace('wiki', '.wikipedia.org/wiki/')}${encodeURIComponent(link.title)}`
+        url:
+          link.url ??
+          `https://${key.replace('wiki', '')}.wikipedia.org/wiki/${encodeURIComponent(link.title)}`,
       }));
-  
-  
-      if (language) {
-      return links.filter(l => l.language === language);
+
+    if (language) {
+      return links.filter((l) => l.language === language);
     }
 
     return links;
   }
-  
-  
 
-  async getItemDate(statements): Promise<string | null> {
+  getItemDate(statements: T.WikidataStatementsResponse): string | null {
     try {
       for (const propId of this.dateIds) {
         const dateStatement = statements[propId]?.[0];
-        const dateValue = dateStatement?.value?.content ?? null;
-        if (dateValue) {
+        if (!dateStatement) continue;
+
+        if (dateStatement.value.type === 'time') {
+          const dateValue = dateStatement.value.content;
           const parsedDate = this.parseWikidataDate(dateValue);
           if (parsedDate) {
             return parsedDate.toISOString();
@@ -169,43 +186,59 @@ export class WikidataService {
         }
       }
 
-      return null; // No date found
-    } catch (error) {
-      this.logger.warn(`Failed to fetch date for: ${error.message}`);
+      return null;
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(`Failed to fetch date: ${errorMessage}`);
       return null;
     }
   }
 
-
-  async getItemLocation(statements): Promise<LocationInfo | null> {
+  async getItemLocation(
+    statements: T.WikidataStatementsResponse,
+  ): Promise<T.LocationInfo | null> {
     try {
       const locationPropertyCandidates = [
-        this.configService.get('wikidata.locationPropertyId'), 
-        ...(this.locationIds ?? []), 
-      ].filter(Boolean);
-  
+        this.configService.get<string>('wikidata.locationPropertyId'),
+        ...(this.locationIds ?? []),
+      ].filter((id): id is string => Boolean(id));
+
       for (const propId of locationPropertyCandidates) {
         const locationStatement = statements[propId]?.[0];
-  
+
         if (!locationStatement) {
           continue;
         }
-  
-        const locationId = locationStatement.value?.content ?? null;
+
+        if (locationStatement.value.type !== 'wikibase-entityid') {
+          continue;
+        }
+
+        const locationId = locationStatement.value.content.id;
         if (!locationId) {
           continue;
         }
 
         const locationName = await this.getItemName(locationId);
         const locationDetails = await this.getItemStatements(locationId);
-        const coordinates =
-          locationDetails.statements[this.configService.get('wikidata.coordinatesPropertyId')]?.[0]
-            ?.value?.content ?? null;  
-        if (coordinates) {
+
+        const coordinatesPropertyId = this.configService.get<string>(
+          'wikidata.coordinatesPropertyId',
+        );
+        const coordinateStatement = coordinatesPropertyId
+          ? locationDetails[coordinatesPropertyId]?.[0]
+          : null;
+
+        if (
+          coordinateStatement &&
+          coordinateStatement.value.type === 'globecoordinate'
+        ) {
+          const coordinates = coordinateStatement.value.content;
           return {
             locationName,
-            latitude: coordinates.latitude?.toString() ?? '',
-            longitude: coordinates.longitude?.toString() ?? '',
+            latitude: coordinates.latitude.toString(),
+            longitude: coordinates.longitude.toString(),
           };
         } else {
           return {
@@ -215,17 +248,19 @@ export class WikidataService {
           };
         }
       }
-  
-      this.logger.log('No location found for any property ID:', locationPropertyCandidates);
-      return null; 
-    } catch (error) {
-      this.logger.warn(`Failed to fetch location: ${error.message}`);
+
+      this.logger.log(
+        'No location found for any property ID:',
+        locationPropertyCandidates,
+      );
+      return null;
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(`Failed to fetch location: ${errorMessage}`);
       return null;
     }
   }
-  
-  
-
 
   async getItemName(itemId: string): Promise<string> {
     const accessToken = await this.fetchAccessToken();
@@ -233,8 +268,9 @@ export class WikidataService {
     const url = isProperty
       ? `${this.wikidataUrl}/wikibase/v1/entities/properties/${itemId}`
       : `${this.wikidataUrl}/wikibase/v1/entities/items/${itemId}`;
+
     try {
-      const response = await firstValueFrom(
+      const response: AxiosResponse<T.WikidataEntity> = await firstValueFrom(
         this.httpService.get(url, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -244,11 +280,15 @@ export class WikidataService {
       );
 
       const entity = response.data;
-      // Labels are nested under entity.labels.<lang>.value
+      const labels = entity?.labels;
+
+      if (!labels) {
+        this.logger.warn(`No labels found for item: ${itemId}`);
+        return '';
+      }
+
       const itemLabel =
-        entity?.labels?.en ??
-        entity?.labels?.[Object.keys(entity.labels || {})[0]] ??
-        '';
+        labels.en?.value ?? labels[Object.keys(labels)[0]]?.value ?? '';
 
       if (!itemLabel) {
         this.logger.warn(`No label found for item: ${itemId}`);
@@ -256,60 +296,90 @@ export class WikidataService {
 
       this.logger.log(itemLabel);
       return itemLabel;
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack =
+        error instanceof Error ? error.stack : 'No stack trace';
       this.logger.error(
-        `Failed to fetch Wikidata item label for ${itemId}: ${error.message}`,
-        error.stack,
+        `Failed to fetch Wikidata item label for ${itemId}: ${errorMessage}`,
+        errorStack,
       );
-      throw new HttpException(`Failed to fetch item label for ${itemId}`, 500);
+      throw new HttpException(
+        `Failed to fetch item label for ${itemId}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
-  async getItemData(itemId: string) {
+  async getItemData(itemId: string): Promise<{
+    statements: T.WikidataStatementsResponse;
+    identifiers: { property: string; value: string; url?: string }[];
+    wikipediaLinks: string | undefined;
+  }> {
     const [statements, entity] = await Promise.all([
       this.getItemStatements(itemId),
       this.getItemEntity(itemId),
     ]);
-  
-    this.logger.log("Getting items with statements and wikipedia links")
-    const identifiers = await this.extractIdentifiers(statements);
-    const wikipediaLinks = entity?.sitelinks ? this.extractWikipediaLinks(entity.sitelinks, 'en')[0]?.url : [];
-  
+
+    this.logger.log('Getting items with statements and wikipedia links');
+    const identifiers = this.extractIdentifiers(statements);
+    const wikipediaLinks = entity?.sitelinks
+      ? this.extractWikipediaLinks(entity.sitelinks, 'en')[0]?.url
+      : undefined;
+
     return { statements, identifiers, wikipediaLinks };
   }
-  
-  async getItemStatements(itemId: string) {
+
+  async getItemStatements(
+    itemId: string,
+  ): Promise<T.WikidataStatementsResponse> {
     const accessToken = await this.fetchAccessToken();
-    const url = `${this.wikidataUrl}/wikibase/v1/entities/items/${itemId}`;
+    const url = `${this.wikidataUrl}/wikibase/v1/entities/items/${itemId}/statements`;
+
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        }),
-      );
+      const response: AxiosResponse<T.WikidataStatementsResponse> =
+        await firstValueFrom(
+          this.httpService.get(url, {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+          }),
+        );
 
       return response.data;
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(
-        `Failed to fetch Wikidata item ${itemId}: ${error.message}`,
+        `Failed to fetch Wikidata item ${itemId}: ${errorMessage}`,
       );
-      throw new HttpException('Failed to fetch Wikidata item', 500);
+      throw new HttpException(
+        'Failed to fetch Wikidata item',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
-  async getPropertyStatements(propertyId: string) {
+  async getPropertyStatements(
+    propertyId: string,
+  ): Promise<Record<string, T.WikidataOldFormatStatement[]>> {
     try {
       if (!propertyId.startsWith('P')) {
         throw new Error(`Invalid property ID: ${propertyId}`);
       }
 
-      // Use the old but stable entitydata endpoint
       const url = `https://www.wikidata.org/wiki/Special:EntityData/${propertyId}.json`;
 
-      const response = await firstValueFrom(this.httpService.get(url));
+      const response: AxiosResponse<T.WikidataEntityDataResponse> =
+        await firstValueFrom(
+          this.httpService.get(url, {
+            headers: {
+              'User-Agent': 'Wikidata timetrail/1.0 (nahomaraya8@gmail.com)',
+            },
+          }),
+        );
 
       const data = response.data?.entities?.[propertyId];
 
@@ -317,7 +387,6 @@ export class WikidataService {
         throw new Error(`No data found for property ${propertyId}`);
       }
 
-      // Extract claims (statements) directly
       const statements = data.claims || {};
 
       this.logger.log(
@@ -325,149 +394,159 @@ export class WikidataService {
       );
 
       return statements;
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(
-        `Failed to fetch Wikidata property ${propertyId}: ${error.message}`,
+        `Failed to fetch Wikidata property ${propertyId}: ${errorMessage}`,
       );
-      throw new HttpException('Failed to fetch Wikidata property', 500);
+      throw new HttpException(
+        'Failed to fetch Wikidata property',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
-  async extractIdentifiers(statements: any): Promise<{ property: string; value: string; url?: string }[]> {
+  extractIdentifiers(
+    statements: T.WikidataStatementsResponse,
+  ): { property: string; value: string; url?: string }[] {
     this.logger.log('Extracting identifiers...');
     const identifiers: { property: string; value: string; url?: string }[] = [];
-  
+
     for (const [prop, values] of Object.entries(statements)) {
       if (!Array.isArray(values)) continue;
       identifiers.push(...this._processPropertyValues(prop, values));
     }
-  
+
     return identifiers;
   }
-  
-  /**
-   * Processes all values under a single property.
-   */
-  private _processPropertyValues(prop: string, values: any[]): { property: string; value: string; url?: string }[] {
+
+  private _processPropertyValues(
+    prop: string,
+    values: T.WikidataStatement[],
+  ): { property: string; value: string; url?: string }[] {
     const identifiers: { property: string; value: string; url?: string }[] = [];
-  
-    for (const v of values) {
-      // Extract URL from mainsnak
-      const mainUrl = this._extractUrlFromMainSnak(v, prop);
-      if (mainUrl) identifiers.push(mainUrl);
-  
+
+    for (const statement of values) {
+      // Extract URL from value if it's a string type
+      if (statement.value.type === 'string') {
+        const value = statement.value.content;
+        if (value.startsWith('http')) {
+          identifiers.push({ property: prop, value, url: value });
+        }
+      }
+
       // Extract URLs from references
-      const refUrls = this._extractUrlsFromReferences(v.references, prop);
-      identifiers.push(...refUrls);
-    }
-  
-    return identifiers;
-  }
-  
-  /**
-   * Extract a URL if mainsnak is a URL type.
-   */
-  private _extractUrlFromMainSnak(v: any, prop: string): { property: string; value: string; url?: string } | null {
-    if (v.mainsnak?.datatype !== 'url') return null;
-  
-    const value = v.mainsnak?.datavalue?.value ?? '';
-    if (!value) return null;
-  
-    let url: string | undefined;
-    if (v.propertyInfo?.formatterUrl) {
-      url = v.propertyInfo.formatterUrl.replace('$1', encodeURIComponent(value));
-    }
-  
-    return { property: prop, value, url };
-  }
-  
-  /**
-   * Extract URLs from nested reference parts.
-   */
-  private _extractUrlsFromReferences(refs: any[], prop: string): { property: string; value: string; url?: string }[] {
-    if (!Array.isArray(refs)) return [];
-  
-    const urls: { property: string; value: string; url?: string }[] = [];
-  
-    for (const ref of refs) {
-      if (!Array.isArray(ref.parts)) continue;
-  
-      for (const part of ref.parts) {
-        if (part.property?.data_type !== 'url') continue;
-  
-        const urlValue = part.value?.content ?? '';
-        if (urlValue) urls.push({ property: prop, value: urlValue, url: urlValue });
+      if (statement.references) {
+        const refUrls = this._extractUrlsFromReferences(
+          statement.references,
+          prop,
+        );
+        identifiers.push(...refUrls);
       }
     }
-  
+
+    return identifiers;
+  }
+
+  private _extractUrlsFromReferences(
+    refs: T.WikidataReference[],
+    prop: string,
+  ): { property: string; value: string; url?: string }[] {
+    const urls: { property: string; value: string; url?: string }[] = [];
+
+    for (const ref of refs) {
+      if (!Array.isArray(ref.parts)) continue;
+
+      for (const part of ref.parts) {
+        if (part.value.type === 'string') {
+          const urlValue = part.value.content;
+          if (urlValue.startsWith('http')) {
+            urls.push({ property: prop, value: urlValue, url: urlValue });
+          }
+        }
+      }
+    }
+
     return urls;
   }
-  
-  
 
   async getEntityIdFromName(
     name: string,
     language: string = 'en',
-    entityType: 'item' | 'property' = 'item', // can be 'item' or 'property'
+    entityType: 'item' | 'property' = 'item',
   ): Promise<string | null> {
     const url = `https://www.wikidata.org/w/api.php`;
-  
+
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          params: {
-            action: 'wbsearchentities',
-            search: name,
-            language,
-            format: 'json',
-            type: entityType,
-            limit: 1, // top match only
-          },
-        }),
-      );
-  
-      const searchResults = response.data?.search || [];
-  
-      if (searchResults.length === 0) {
-        this.logger.warn(
-          `No Wikidata ${entityType} found for name: "${name}"`,
+      const response: AxiosResponse<T.WikidataSearchResponse> =
+        await firstValueFrom(
+          this.httpService.get(url, {
+            params: {
+              action: 'wbsearchentities',
+              search: name,
+              language,
+              format: 'json',
+              type: entityType,
+              limit: 1,
+            },
+            headers: {
+              'User-Agent': 'Wikidata timetrail/1.0 (nahomaraya8@gmail.com)',
+            },
+          }),
         );
+
+      const searchResults = response.data?.search || [];
+
+      if (searchResults.length === 0) {
+        this.logger.warn(`No Wikidata ${entityType} found for name: "${name}"`);
         return null;
       }
-  
-      const entityId = searchResults[0].id; // e.g. "Q42" or "P31"
+
+      const entityId = searchResults[0].id;
       this.logger.log(
         `Found Wikidata ${entityType} for "${name}": ${entityId}`,
       );
-  
+
       return entityId;
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack =
+        error instanceof Error ? error.stack : 'No stack trace';
       this.logger.error(
-        `Failed to fetch Wikidata ${entityType}Id for "${name}": ${error.message}`,
-        error.stack,
+        `Failed to fetch Wikidata ${entityType}Id for "${name}": ${errorMessage}`,
+        errorStack,
       );
       throw new HttpException(
         `Failed to fetch Wikidata ${entityType}Id from name`,
-        500,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
-  
-  async getItemIdFromName(name: string, language: string = 'en'): Promise<string | null> {
+
+  async getItemIdFromName(
+    name: string,
+    language: string = 'en',
+  ): Promise<string | null> {
     const url = `https://www.wikidata.org/w/api.php`;
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          params: {
-            action: 'wbsearchentities',
-            search: name,
-            language,
-            format: 'json',
-            type: 'item',
-            limit: 1, // return top match only
-          },
-        }),
-      );
+      const response: AxiosResponse<T.WikidataSearchResponse> =
+        await firstValueFrom(
+          this.httpService.get(url, {
+            params: {
+              action: 'wbsearchentities',
+              search: name,
+              language,
+              format: 'json',
+              type: 'item',
+              limit: 1,
+            },
+            headers: {
+              'User-Agent': 'Wikidata timetrail/1.0 (nahomaraya8@gmail.com)',
+            },
+          }),
+        );
 
       const searchResults = response.data?.search || [];
 
@@ -476,50 +555,58 @@ export class WikidataService {
         return null;
       }
 
-      const itemId = searchResults[0].id; // e.g. "Q947667"
+      const itemId = searchResults[0].id;
       this.logger.log(`Found Wikidata entity for "${name}": ${itemId}`);
 
       return itemId;
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack =
+        error instanceof Error ? error.stack : 'No stack trace';
       this.logger.error(
-        `Failed to fetch Wikidata itemId for "${name}": ${error.message}`,
-        error.stack,
+        `Failed to fetch Wikidata itemId for "${name}": ${errorMessage}`,
+        errorStack,
       );
-      throw new HttpException('Failed to fetch Wikidata itemId from name', 500);
+      throw new HttpException(
+        'Failed to fetch Wikidata itemId from name',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
-  
-      // 🔹 Helper: check if entity is instance/subclass of *any* of these targets
   private isSubclassOrInstanceOf = async (
-        entityId: string,
-        targetIds: string[],
-      ): Promise<boolean> => {
-        try {
-          // Use the unified entity fetcher (works for Qs or Ps)
-          const entityStatements = await this.getPropertyStatements(entityId);
+    entityId: string,
+    targetIds: string[],
+  ): Promise<boolean> => {
+    try {
+      const entityStatements = await this.getPropertyStatements(entityId);
 
-          const instanceOf = entityStatements['P31'] || []; // instance of
-          const subclassOf = entityStatements['P279'] || []; // subclass of
-          const subPropertyOf = entityStatements['P1647'] || [];
+      const instanceOf: T.WikidataOldFormatStatement[] =
+        entityStatements['P31'] || [];
+      const subclassOf: T.WikidataOldFormatStatement[] =
+        entityStatements['P279'] || [];
+      const subPropertyOf: T.WikidataOldFormatStatement[] =
+        entityStatements['P1647'] || [];
 
-          const relatedIds = [
-            ...instanceOf.map(v => v.mainsnak?.datavalue?.value?.id),
-            ...subclassOf.map(v => v.mainsnak?.datavalue?.value?.id),
-            ...subPropertyOf.map(v => v.mainsnak?.datavalue?.value?.id),
-          ].filter(Boolean);
-
-          // ✅ Check if any related ID matches any of the targets
-          return relatedIds.some(id => targetIds.includes(id));
-        } catch (e) {
-          this.logger.warn(`Relation check failed for ${entityId}: ${e.message}`);
-          return false;
-        }
+      const relatedIds: string[] = [
+        ...instanceOf.map((v) => v.mainsnak?.datavalue?.value?.id),
+        ...subclassOf.map((v) => v.mainsnak?.datavalue?.value?.id),
+        ...subPropertyOf.map((v) => v.mainsnak?.datavalue?.value?.id),
+      ].filter((id): id is string => Boolean(id));
+      return relatedIds.some((id) => targetIds.includes(id));
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(
+        `Relation check failed for ${entityId}: ${errorMessage}`,
+      );
+      return false;
+    }
   };
-  
-  async getMultiValueProperties(
 
-    statements: Record<string, any[]>,
+  async getMultiValueProperties(
+    statements: T.WikidataStatementsResponse,
     itemId?: string,
   ): Promise<string[]> {
     try {
@@ -528,37 +615,50 @@ export class WikidataService {
         return [];
       }
 
+      const limit = pLimit(5);
 
-
-      const limit = pLimit(5); // 5 concurrent requests at a time
-
-      //use array of tasks instead of loops
-      const tasks = Object.entries(statements.statements).map(([propId]) =>
+      const tasks = Object.entries(statements).map(([propId]) =>
         limit(async () => {
-      const isRelevant = await this.isSubclassOrInstanceOf(propId, this.targetIds);
-      if (!isRelevant) return null;
+          const isRelevant = await this.isSubclassOrInstanceOf(
+            propId,
+            this.targetIds,
+          );
+          if (!isRelevant) return null;
 
-      const values = await this.sparqlService.getValuesFromProperty(itemId ?? '', propId);
-      const entityIds = values
-      .map(v => v.valueQID?.value)
-      .filter((id): id is string => Boolean(id));
+          const values: SparqlValueResult[] =
+            await this.sparqlService.getValuesFromProperty(
+              itemId ?? '',
+              propId,
+            );
+          const entityIds = values
+            .map((v) => v.valueQID?.value)
+            .filter((id): id is string => Boolean(id));
 
-      const distinctEntityIds = [...new Set(entityIds)];
-      return distinctEntityIds.length > 1 ? propId : null;
-    }),
-  );
+          const distinctEntityIds = [...new Set(entityIds)];
+          return distinctEntityIds.length > 1 ? propId : null;
+        }),
+      );
 
       const results = await Promise.allSettled(tasks);
       const multiValueProps = results
-        .filter(r => r.status === 'fulfilled' && r.value)
-        .map(r => (r as PromiseFulfilledResult<string>).value);
+        .filter(
+          (r): r is PromiseFulfilledResult<string> =>
+            r.status === 'fulfilled' && r.value !== null,
+        )
+        .map((r) => r.value);
       return multiValueProps;
-    } catch (error) {
-      this.logger.error(`Failed to find multi-value properties: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack =
+        error instanceof Error ? error.stack : 'No stack trace';
+      this.logger.error(
+        `Failed to find multi-value properties: ${errorMessage}`,
+        errorStack,
+      );
       return [];
     }
   }
-
-
-
 }
+
+export default WikidataService;

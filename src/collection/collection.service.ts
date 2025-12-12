@@ -1,57 +1,93 @@
-import { Injectable, Logger, HttpException } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { WikidataService } from '../wikidata/wikidata.service';
 import { CommonsService, CommonsImageInfo } from '../wikidata/commons.service';
 import { SparqlService } from '../wikidata/sparql.service';
-import { Collection, SparqlItemResult, SparqlValueResult, ValueDetailsResult } from './collection.interface';
+import {
+  Collection,
+  SparqlItemResult,
+  SparqlValueResult,
+  ValueDetailsResult,
+} from './collection.interface';
 import { ConfigService } from '@nestjs/config';
 import pLimit from 'p-limit';
-
-interface LocationInfo {
-  locationName: string;
-  latitude: string,
-  longitude: string,
-}
-
+import * as T from '../interfaces/wikidata.interface';
 
 @Injectable()
 export class CollectionService {
-
   private readonly logger = new Logger(CollectionService.name);
 
   constructor(
     private readonly wikidataService: WikidataService,
     private readonly commonsService: CommonsService,
     private readonly sparqlService: SparqlService,
-    private readonly configService: ConfigService
-  ) { }
+    private readonly configService: ConfigService,
+  ) {}
 
-  private async getItemDetails(items: SparqlItemResult[]): Promise<Collection[]> {
+  private async getItemDetails(
+    items: SparqlItemResult[],
+  ): Promise<Collection[]> {
     const itemPromises = items.map(async (item) => {
       try {
-        const qid = item.item.value.split('/').pop()!; // "Q135515584"
+        const qid = item.item.value.split('/').pop()!;
         const name = item.itemLabel?.value ?? '';
         const desc = item.itemDescription?.value ?? '';
 
-        // Get full statements from Wikidata for this item
         const statements = await this.wikidataService.getItemStatements(qid);
-        const identifier = await this.getFirstItemIdentifier(qid, statements);
-        const locationId = statements[this.configService.get('wikidata.locationPropertyId')]?.[0]?.value?.content ?? null;
-        let location: LocationInfo | null = null;
+        const { identifiers, wikipediaLinks } =
+          await this.wikidataService.getItemData(qid);
+        const identifier = this.getFirstItemIdentifier(
+          statements,
+          identifiers,
+          wikipediaLinks,
+        );
+
+        const locationPropertyId = this.configService.get<string>(
+          'wikidata.locationPropertyId',
+        );
+        const locationStatement = locationPropertyId
+          ? statements[locationPropertyId]?.[0]
+          : null;
+
+        let locationId: string | null = null;
+        if (locationStatement?.value.type === 'wikibase-entityid') {
+          locationId = locationStatement.value.content.id;
+        }
+
+        let location: T.LocationInfo | null = null;
         if (locationId) {
-          const locationStatement = await this.wikidataService.getItemStatements(locationId);
-          const locationName = await this.wikidataService.getItemName(locationId);
-          const locationCoordinates = locationStatement[this.configService.get('wikidata.coordinatesPropertyId')]?.[0]?.value?.content ?? null;
-          if (locationCoordinates) {
+          const locationStatements =
+            await this.wikidataService.getItemStatements(locationId);
+          const locationName =
+            await this.wikidataService.getItemName(locationId);
+
+          const coordinatesPropertyId = this.configService.get<string>(
+            'wikidata.coordinatesPropertyId',
+          );
+          const coordinateStatement = coordinatesPropertyId
+            ? locationStatements[coordinatesPropertyId]?.[0]
+            : null;
+
+          if (coordinateStatement?.value.type === 'globecoordinate') {
+            const coords = coordinateStatement.value.content;
             location = {
               locationName,
-              latitude: locationCoordinates.latitude.toString(),
-              longitude: locationCoordinates.longitude.toString(),
+              latitude: coords.latitude.toString(),
+              longitude: coords.longitude.toString(),
             };
           }
         }
 
-        // Extract P18 image name and resolve to Commons URLs
-        const imageName = statements[this.configService.get('wikidata.imagePropertyId')]?.[0]?.value?.content ?? null;
+        const imagePropertyId = this.configService.get<string>(
+          'wikidata.imagePropertyId',
+        );
+        const imageStatement = imagePropertyId
+          ? statements[imagePropertyId]?.[0]
+          : null;
+        const imageName =
+          imageStatement?.value.type === 'string'
+            ? imageStatement.value.content
+            : null;
+
         let imageInfo: CommonsImageInfo | { error: string } | null = null;
         if (imageName) {
           imageInfo = await this.commonsService.getImageByName(imageName);
@@ -65,59 +101,79 @@ export class CollectionService {
           image: imageInfo,
           identifier,
         };
-      } catch (err) {
-        this.logger.error(`Error ingesting item ${item.item.value}: ${err.message}`);
-        return null; // or { error: err.message } if you want to keep track
+      } catch (err: unknown) {
+        const errorMessage =
+          err instanceof Error ? err.message : 'Unknown error';
+        this.logger.error(
+          `Error ingesting item ${item.item.value}: ${errorMessage}`,
+        );
+        return null;
       }
     });
 
-    // Wait for all promises to resolve in parallel
     const results = await Promise.all(itemPromises);
-    return results.filter((r) => r !== null);
-
+    return results.filter((r): r is Collection => r !== null);
   }
 
-  private async getValueDetails(items: SparqlValueResult[]): Promise<ValueDetailsResult[]> {
+  private async getValueDetails(
+    items: SparqlValueResult[],
+  ): Promise<ValueDetailsResult[]> {
     const limit = pLimit(5);
-    const itemPromises = items.map(async (item) =>  limit(async () =>{
-      try {
-        const qid = item.valueQID?.value ?? ''; 
-        const name = item.valueLabel?.value ?? '';
-        const desc = item.valueDescription?.value ?? '';
+    const itemPromises = items.map(async (item) =>
+      limit(async () => {
+        try {
+          const qid = item.valueQID?.value ?? '';
+          const name = item.valueLabel?.value ?? '';
+          const desc = item.valueDescription?.value ?? '';
 
-        // Get full statements from Wikidata for this item
-        const { statements, wikipediaLinks, identifiers } = await this.wikidataService.getItemData(qid);
+          const { statements, wikipediaLinks } =
+            await this.wikidataService.getItemData(qid);
 
-        const location: LocationInfo | null = await this.wikidataService.getItemLocation(statements.statements);
-        const date = await this.wikidataService.getItemDate(statements.statements);
-        // Extract P18 image name and resolve to Commons URLs
-        const imageName = statements.statements[this.configService.get('wikidata.imagePropertyId')]?.[0]?.value?.content ?? null;
-        this.logger.log(imageName);
-        let imageInfo: CommonsImageInfo | { error: string } | null = null;
-        if (imageName) {
-          imageInfo = await this.commonsService.getImageByName(imageName);
+          const location: T.LocationInfo | null =
+            await this.wikidataService.getItemLocation(statements);
+          const date = this.wikidataService.getItemDate(statements);
+
+          const imagePropertyId = this.configService.get<string>(
+            'wikidata.imagePropertyId',
+          );
+          const imageStatement = imagePropertyId
+            ? statements[imagePropertyId]?.[0]
+            : null;
+          const imageName =
+            imageStatement?.value.type === 'string'
+              ? imageStatement.value.content
+              : null;
+
+          this.logger.log(imageName);
+          let imageInfo: CommonsImageInfo | { error: string } | null = null;
+          if (imageName) {
+            imageInfo = await this.commonsService.getImageByName(imageName);
+          }
+
+          return {
+            id: qid,
+            name,
+            desc,
+            location,
+            date,
+            image: imageInfo,
+            wikipediaLinks,
+          };
+        } catch (err: unknown) {
+          const errorMessage =
+            err instanceof Error ? err.message : 'Unknown error';
+          this.logger.error(
+            `Error ingesting item ${item.valueQID?.value}: ${errorMessage}`,
+          );
+          return null;
         }
-
-        return {
-          id: qid,
-          name,
-          desc,
-          location,
-          date,
-          image: imageInfo,
-          wikipediaLinks
-        };
-      } catch (err) {
-        this.logger.error(`Error ingesting item ${item.valueQID?.value}: ${err.message}`);
-        return null; // or { error: err.message } if you want to keep track
-      }
-    })
-  
+      }),
     );
     const results = await Promise.all(itemPromises);
-    const filtered = results.filter((r) => r !== null);
+    const filtered = results.filter((r): r is ValueDetailsResult => {
+      return r !== null;
+    });
 
-    // Sort by date (descending: newest first)
     filtered.sort((a, b) => {
       if (!a.date && !b.date) return 0;
       if (!a.date) return 1;
@@ -125,48 +181,44 @@ export class CollectionService {
       return new Date(a.date).getTime() - new Date(b.date).getTime();
     });
 
-  return filtered;
+    return filtered;
+  }
 
-  }  
-
-  private async getFirstItemIdentifier(
-    qid: string,
-    data: {
-      statements: any;
-      identifiers: { property: string; value: string; url?: string }[];
-      wikipediaLinks?: { language: string; title: string; url: string }[];
-    }
-  ): Promise<string | null> {
-    const { statements, identifiers, wikipediaLinks } = data;
-  
+  private getFirstItemIdentifier(
+    statements: T.WikidataStatementsResponse,
+    identifiers: { property: string; value: string; url?: string }[],
+    wikipediaLinks?: string,
+  ): string | null {
     // 1️⃣ Prefer explicit identifiers that have URLs
-    const firstIdentifierWithUrl = identifiers.find(id => !!id.url);
+    const firstIdentifierWithUrl = identifiers.find((id) => !!id.url);
     if (firstIdentifierWithUrl) return firstIdentifierWithUrl.url!;
-  
+
     // 2️⃣ Then fall back to Wikipedia links (if any)
-    if (wikipediaLinks && wikipediaLinks.length > 0) {
-      return wikipediaLinks[0].url;
+    if (wikipediaLinks && typeof wikipediaLinks === 'string') {
+      return wikipediaLinks;
     }
-  
-    // 3️⃣ Try to extract direct URLs from statements
-    for (const values of Object.values(statements)) {
-      for (const v of values as any[]) {
-        const val = v?.mainsnak?.datavalue?.value ?? v?.value?.content;
-        if (typeof val === 'string' && val.startsWith('http')) {
-          return val;
+
+    // 3️⃣ Try to extract direct URLs from statement values
+    for (const statementArray of Object.values(statements)) {
+      for (const statement of statementArray) {
+        if (statement.value.type === 'string') {
+          const val = statement.value.content;
+          if (val.startsWith('http')) {
+            return val;
+          }
         }
       }
     }
-  
+
     // 4️⃣ Check URLs in references
-    for (const values of Object.values(statements)) {
-      for (const v of values as any[]) {
-        if (v?.references) {
-          for (const ref of v.references) {
-            for (const snakValues of Object.values(ref.snaks || {})) {
-              for (const snak of snakValues as any[]) {
-                const refVal = snak?.datavalue?.value;
-                if (typeof refVal === 'string' && refVal.startsWith('http')) {
+    for (const statementArray of Object.values(statements)) {
+      for (const statement of statementArray) {
+        if (statement.references) {
+          for (const ref of statement.references) {
+            for (const part of ref.parts) {
+              if (part.value.type === 'string') {
+                const refVal = part.value.content;
+                if (refVal.startsWith('http')) {
                   return refVal;
                 }
               }
@@ -175,22 +227,26 @@ export class CollectionService {
         }
       }
     }
-  
+
     return null;
   }
-  
 
   async queryItemsWithFilters(
     year?: number,
-    timePeriod?: string, // array of conditions like "ps:P793:Q192623"
+    timePeriod?: string,
   ): Promise<Collection[]> {
-
     const qid = await this.wikidataService.getItemIdFromName(timePeriod ?? '');
     if (qid === null) {
-      throw new HttpException(`Wikidata item not found for time period: ${timePeriod}`, 404);
+      throw new HttpException(
+        `Wikidata item not found for time period: ${timePeriod}`,
+        HttpStatus.NOT_FOUND,
+      );
     }
-    const items = this.sparqlService.queryItemsWithFilters(year ? year.toString() : undefined, qid);
-    return this.getItemDetails(await items);
+    const items = await this.sparqlService.queryItemsWithFilters(
+      year ? year.toString() : undefined,
+      qid,
+    );
+    return this.getItemDetails(items);
   }
 
   async getLootedItems(): Promise<Collection[]> {
@@ -198,19 +254,26 @@ export class CollectionService {
     return this.getItemDetails(items);
   }
 
-  async getMultipleValue(itemId?: string, propertyId?: string){
-    const items = await this.sparqlService.getValuesFromProperty(itemId??'', propertyId??'');
+  async getMultipleValue(
+    itemId?: string,
+    propertyId?: string,
+  ): Promise<ValueDetailsResult[]> {
+    const items = await this.sparqlService.getValuesFromProperty(
+      itemId ?? '',
+      propertyId ?? '',
+    );
     return this.getValueDetails(items);
   }
 
-  async getMultipeProps(itemId:string){
+  async getMultipeProps(itemId: string): Promise<string[]> {
     const statements = await this.wikidataService.getItemStatements(itemId);
-    const multiValueProps = await this.wikidataService.getMultiValueProperties(statements,itemId);
+    const multiValueProps = await this.wikidataService.getMultiValueProperties(
+      statements,
+      itemId,
+    );
     const names = await Promise.all(
-      multiValueProps.map((propId) => this.wikidataService.getItemName(propId))
+      multiValueProps.map((propId) => this.wikidataService.getItemName(propId)),
     );
     return names;
   }
-
-
 }

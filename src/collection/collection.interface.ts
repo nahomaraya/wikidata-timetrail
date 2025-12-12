@@ -1,13 +1,11 @@
 export interface Location {
-    locationName: string;
-    latitude: string;
-    longitude: string;
+  locationName: string;
+  latitude: string;
+  longitude: string;
 }
 
-
-
 export interface Image {
-    filename: string;
+  filename: string;
   commons_url: string;
   original_url?: string;
   thumbnails?: {
@@ -19,13 +17,13 @@ export interface Image {
 }
 
 export interface Collection {
-    id: string;
-    name: string;
-    desc: string;
-    location: Location | null;
-    image: Image | { error: string } | null;
+  id: string;
+  name: string;
+  desc: string;
+  location: Location | null;
+  image: Image | { error: string } | null;
+  identifier: string | null;
 }
-
 
 // Input types for the functions
 export interface SparqlItemResult {
@@ -60,5 +58,5 @@ export interface ValueDetailsResult {
   location: Location | null;
   date: string | null;
   image: Image | { error: string } | null;
-  wikipediaLinks : any[];
+  wikipediaLinks: string | undefined;
 }

@@ -8,6 +8,6 @@ import { WikidataModule } from '../wikidata/wikidata.module';
   imports: [HttpModule, WikidataModule],
   providers: [CollectionService],
   controllers: [CollectionController],
-  exports: [CollectionService]
+  exports: [CollectionService],
 })
 export class CollectionModule {}

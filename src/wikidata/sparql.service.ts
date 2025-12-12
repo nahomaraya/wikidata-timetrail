@@ -1,11 +1,26 @@
-import { Injectable, HttpException, Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
 import { StateService } from '../state/state.service';
+import { AxiosError, AxiosResponse } from 'axios';
 
+export interface SparqlBinding {
+  type: 'uri' | 'literal' | 'bnode';
+  value: string;
+  'xml:lang'?: string;
+  datatype?: string;
+}
 
-
+export interface SparqlValueResult {
+  value: SparqlBinding;
+  valueLabel?: SparqlBinding;
+  valueQID?: SparqlBinding;
+  valueDescription?: SparqlBinding;
+  start_time?: SparqlBinding;
+  end_time?: SparqlBinding;
+  point_in_time?: SparqlBinding;
+}
 
 @Injectable()
 export class SparqlService {
@@ -15,37 +30,48 @@ export class SparqlService {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-    private readonly stateService: StateService
-  ) { }
+    private readonly stateService: StateService,
+  ) {}
 
   /**
    * Generic SPARQL executor
    */
-  private async runQuery(sparqlQuery: string): Promise<any[]> {
-    const fullUrl = this.sparqlUrl + '?query=' + encodeURIComponent(sparqlQuery);
+  private async runQuery(sparqlQuery: string): Promise<SparqlValueResult[]> {
+    const fullUrl =
+      this.sparqlUrl + '?query=' + encodeURIComponent(sparqlQuery);
 
     try {
-      const response = await firstValueFrom(
+      const response: AxiosResponse<{
+        results: {
+          bindings: SparqlValueResult[];
+        };
+      }> = await firstValueFrom(
         this.httpService.get(fullUrl, {
           headers: { Accept: 'application/sparql-results+json' },
         }),
       );
 
       return response.data?.results?.bindings ?? [];
-    } catch (error) {
-      this.logger.error(`SPARQL query failed: ${error.message}`, error.stack);
-      if (error.response) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      const errorStack =
+        error instanceof Error ? error.stack : 'No stack trace';
+
+      this.logger.error(`SPARQL query failed: ${errorMessage}`, errorStack);
+
+      if (error instanceof AxiosError && error.response) {
         this.logger.error(
           `Response status: ${error.response.status}, data: ${JSON.stringify(error.response.data)}`,
         );
       }
+
       throw new HttpException(
-        `SPARQL query failed: ${error.message}`,
-        500,
+        `SPARQL query failed: ${errorMessage}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
-
   /**
    * Default query for looted items in 1868 (Battle of Magdala)
    */
@@ -118,36 +144,10 @@ export class SparqlService {
 
     return result;
   }
-
-
-  async getItemName(itemId: string): Promise<string> {
-    const cacheKey = `sparql:getItemName:${itemId}`;
-
-    // Try to get from cache first
-    const cachedResult = await this.stateService.cacheGet<string>(cacheKey);
-    if (cachedResult) {
-      this.logger.log(`Returning cached item name for ${itemId}`);
-      return cachedResult;
-    }
-
-    const sparqlQuery = `
-      SELECT ?itemLabel
-      WHERE {
-        VALUES ?item { wd:${itemId} }
-        SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
-      }
-    `;
-    const bindings = await this.runQuery(sparqlQuery);
-    const result = bindings[0]?.itemLabel?.value ?? '';
-
-    // Cache the result for 24 hours (86400 seconds) since item names don't change often
-    await this.stateService.cacheSet(cacheKey, result, 86400);
-    this.logger.log(`Cached item name for ${itemId}`);
-
-    return result;
-  }
-
-  async getValuesFromProperty(itemId: string, propertyId: string): Promise<any[]> {
+  async getValuesFromProperty(
+    itemId: string,
+    propertyId: string,
+  ): Promise<SparqlValueResult[]> {
     const sparqlQuery = `
        SELECT DISTINCT
   ?value ?valueLabel
@@ -174,8 +174,7 @@ WHERE {
 ORDER BY ASC(COALESCE(?point_in_time, ?start_time, ?end_time))
     `;
 
-    const bindings = await this.runQuery(sparqlQuery);
     // const result = bindings[0]?.itemLabel?.value ?? '';
-    return bindings;
+    return await this.runQuery(sparqlQuery);
   }
 }

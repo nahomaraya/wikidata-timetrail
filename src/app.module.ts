@@ -18,7 +18,6 @@ import upstashConfig from './config/upstash.config';
 import { WikidataModule } from './wikidata/wikidata.module';
 import { StateModule } from './state/state.module';
 
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -26,14 +25,20 @@ import { StateModule } from './state/state.module';
       isGlobal: true,
     }),
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..'), 
-      renderPath: '/',                 
-      serveRoot: '/', 
+      rootPath: join(__dirname, '..'),
+      renderPath: '/',
+      serveRoot: '/',
       serveStaticOptions: {
         index: 'index.html',
-      },                 
+      },
     }),
-    CollectionModule, CommonsModule, WikidataModule,  SupabaseModule, AuthModule, StateModule],
+    CollectionModule,
+    CommonsModule,
+    WikidataModule,
+    SupabaseModule,
+    AuthModule,
+    StateModule,
+  ],
   controllers: [AppController],
   providers: [AppService, CommonsService, CollectionService, Logger],
 })
