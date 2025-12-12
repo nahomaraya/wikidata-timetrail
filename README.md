@@ -1,22 +1,55 @@
+
 # Wikidata TimeTrail
-**Wikidata TimeTrail** is a tool to build and visualize *timelines* from Wikidata items based on their historical statements.  
-It provides both a web service and a mapping tool that lets you explore the life, events, and changes associated with a Wikidata entity (Q-ID).
 
-## Quick Start
+<p align="center">
+  <a href="https://etherpad.wikimedia.org/p/Wikidata_Timetrail_Feedback">
+    <img src="https://img.shields.io/badge/Feedback-Etherpad-blue?style=for-the-badge&logo=etherpad&logoColor=white" alt="Feedback"/>
+  </a>
+  <a href="https://toolhub.wikimedia.org/tools/toolforge-wikidata-timetrail">
+    <img src="https://img.shields.io/badge/Powered%20by-Toolhub-006699?style=for-the-badge&logo=wikidata&logoColor=white" alt="Toolhub"/>
+  </a>
+</p>
 
-1. **Install dependencies:**
+**Wikidata TimeTrail** is a tool to build and visualize timelines from Wikidata items based on their historical statements. Explore the life, events, and changes associated with any Wikidata entity through an interactive timeline and map view.
+
+**[🚀 Try it Now](https://wikidata-timetrail.toolforge.org/)** | **[📖 Swagger API Docs](https://wikidata-timetrail.toolforge.org/api)**
+
+<p align="center">
+  <img src="assets/screenshots/timeline-view.png" alt="Timeline View" width="80%"/>
+</p>
+
+## ✨ Features
+
+🗓️ **Timeline Visualization**: Build chronological timelines from any Wikidata Q-ID.
+
+🗺️ **Geospatial Mapping**: View events on an interactive map with location enrichment.
+
+🖼️ **Auto Image Resolution**: Fetches and resolves images from Wikidata statements.
+
+🔍 **SPARQL Integration**: Query time-series properties directly from Wikidata.
+
+📅 **Smart Date Parsing**: Handles multiple date formats, time spans, and qualifiers.
+
+🔗 **Wikipedia Links**: Direct links to related Wikipedia articles for each event.
+
+🎨 **REST API**: Full Swagger documentation for easy integration.
+
+## 🚀 Quick Start
+
+**1. Install dependencies:**
 ```bash
 pnpm install
 ```
 
-2. **Set up environment variables:**
-Create a `.env` file with:
+**2. Set up environment variables:**
+
+Create a `.env` file:
 ```env
 WIKIDATA_CLIENT_ID=your_wikidata_client_id
 WIKIDATA_CLIENT_SECRET=your_wikidata_client_secret
 ```
 
-3. **Run the project:**
+**3. Run the project:**
 ```bash
 # Development
 pnpm run start:dev
@@ -26,50 +59,30 @@ pnpm run build
 pnpm run start:prod
 ```
 
-4. **To access:**
+**4. Access the app:**
+- 🌐 Web Interface: `http://localhost:3000`
+- 📚 Swagger API: `http://localhost:3000/api`
+
+
+### Location Properties
+
+Customize which location properties are used for geospatial enrichment. The order determines location precision—properties listed first are prioritized for more specific locations.
 ```bash
-#Web Page
-http://localhost:3000
-
-#Swagger Url
-http://localhost:3000/api
+LOCATION_IDS=P625,P159,P131,P36,P17
 ```
+| Property | Description |
+|----------|-------------|
+| `P625` | Coordinate location |
+| `P159` | Headquarters location |
+| `P131` | Located in administrative entity |
+| `P36` | Capital |
+| `P17` | Country |
 
 
+### API Response
 
----
-
-## How It Works
-
-1. **Ingest Wikidata Statements**  
-   The tool fetches statements about a given Wikidata item via the Wikidata API or dumps (via Toolforge).  
-   It looks at date-related properties (e.g., `P580`, `P571`, `P582`) to extract times that matter (birth, creation, dissolution, major events).
-   Fetches images from the wikidata statements and performs auto-resolution
-
-3. **Normalize Dates**  
-   - Parses different date formats (point-in-time, time spans, qualifiers).  
-   - Converts them into a consistent internal representation (e.g., ISO 8601) for timeline visualization.
-
-4. **Event Aggregation & Ordering**  
-   - Orders extracted statements chronologically.  
-   - Merges overlapping or nested events.  
-   - Optionally filters and deduplicates based on configuration (e.g., only “significant” dates, or lowest-level qualifiers).
-   - SPARQL query for time-series properties
-   - Wikidata REST API query for labels, images, and fallbacks
-
-5. **Geospatial Enrichment**  
-   - Uses location-related properties (configured via `LOCATION_IDS` such as `P17`, `P131`, `P625`, etc.).
-   - These can also be configured via environment variable
-     ```bash
-     LOCATION_IDS=P17,P131,P625,P159,P495,P1071,P36
-     ```
-   - Resolves location Q-IDs to coordinates (if available) or hierarchical parent locations.  
-   - Provides geospatial data for mapping on a timeline map view.
-
-6. **Output**
-    The API returns JSON such as:
-  ```bash
-  [{
+```json
+{
   "id": "Q1710656",
   "name": "Washington Territory",
   "desc": "Territory of the USA between 1853–1889",
@@ -77,12 +90,36 @@ http://localhost:3000/api
   "date": "1853-01-01T00:00:00.000Z",
   "image": null,
   "wikipediaLinks": "https://en.wikipedia.org/wiki/Washington_Territory"
-}]
+}
 ```
-These can be visualized as snapshots on maps, timelines, or interactive historical explorers.
 
+## How It Works
 
-## Feedback or Suggestions 
+1. **Ingest** – Fetches statements from Wikidata API using date-related properties (`P580`, `P571`, `P582`)
+2. **Normalize** – Parses and converts dates to ISO 8601 format
+3. **Aggregate** – Orders events chronologically, merges overlapping events, and deduplicates
+4. **Enrich** – Resolves location Q-IDs to coordinates for map visualization
+5. **Output** – Returns structured JSON for timeline and map rendering
 
-Please use the etherpad below for any feedback or suggestions!
-https://etherpad.wikimedia.org/p/Wikidata_Timetrail_Feedback
+<p align="center">
+  <img src="assets/screenshots/map-view.png" alt="Map View" width="80%"/>
+</p>
+
+## Contribution
+
+1. Fork this repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Feedback & Suggestions
+
+Please share your feedback on our [Etherpad](https://etherpad.wikimedia.org/p/Wikidata_Timetrail_Feedback).
+
+### Acknowledgements
+
+- [Wikidata](https://www.wikidata.org) for providing open access to structured data
+- [Wikimedia Toolforge](https://toolforge.org) for hosting and infrastructure support
+
+---
