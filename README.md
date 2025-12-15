@@ -15,7 +15,8 @@
 **[🚀 Try it Now](https://wikidata-timetrail.toolforge.org/)** | **[📖 Swagger API Docs](https://wikidata-timetrail.toolforge.org/api)**
 
 <p align="center">
-  <img src="assets/screenshots/timeline-view.png" alt="Timeline View" width="80%"/>
+    <img width="2561" height="1196" alt="markuphero-gUKTOji9j0zs7K0USLWe" src="https://github.com/user-attachments/assets/9c281415-18d9-45bf-b425-cd0bae6162da" />
+  <img width="2561" height="1196" alt="markuphero-K1yxAF1bcCNfQxQmARJ9" src="https://github.com/user-attachments/assets/9c23918d-4847-4eaf-af7d-fdcdfcf1f318" />
 </p>
 
 ## ✨ Features
